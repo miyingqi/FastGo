@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/miyingqi/Fast-Go"
+	"github.com/miyingqi/FastGo"
 )
 
 func main() {

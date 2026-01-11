@@ -13,9 +13,8 @@ import (
 )
 
 type App struct {
-	server     *http.Server
-	router     *Router
-	middleware []Middleware
+	server *http.Server
+	router *Router
 }
 
 func (h *App) initServer(addr string, handler http.Handler) {
@@ -27,8 +26,10 @@ func (h *App) initServer(addr string, handler http.Handler) {
 		IdleTimeout:    30 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 1MB
 	}
-	h.router = NewRouter()
-	h.middleware = make([]Middleware, 0)
+	if h.router == nil {
+		h.router = NewRouter()
+	}
+
 }
 
 // Run 启动服务器并支持优雅关机
@@ -74,17 +75,17 @@ func (h *App) gracefulShutdown() error {
 	return nil
 }
 
-func (h *App) Use(middleware Middleware) {
-	h.middleware = append(h.middleware, middleware)
+func (h *App) Use() {
+
 }
-func (h *App) AddMiddleware(middleware ...Middleware) {
-	h.middleware = append(h.middleware, middleware...)
+func (h *App) AddMiddleware() {
+
 }
 func (h *App) UseRouter(router *Router) {
 	h.router = router
 }
 func (h *App) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	ctx := NewContext(writer, request)
-
+	h.router.getRoute(request.Method).FindChild(request.URL.Path)
 	h.router.HandleHTTP(ctx)
 }
