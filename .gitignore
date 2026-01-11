@@ -1,0 +1,59 @@
+# Go编译产物
+*.o
+*.a
+*.so
+*.exe
+*.test
+*.prof
+
+# Go缓存和构建
+go-build/
+go-cache/
+go-mod-cache/
+.coverprofile
+
+# 二进制可执行文件
+bin/
+dist/
+build/
+
+# IDE和编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+#*
+\#*\#
+
+# 日志和临时文件
+*.log
+logs/
+tmp/
+temp/
+.DS_Store
+Thumbs.db
+
+# 本地配置
+config/local.*
+config/dev.*
+.env
+.env.local
+
+# 本地数据库和数据文件
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# 测试覆盖率
+coverage.out
+coverprofile.out
+
+# 本地运行时
+uploads/
+cache/
+
+# Docker临时文件（Dockerfile需要提交）
+.dockerignore
+*.dockerfile
