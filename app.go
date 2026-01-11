@@ -85,5 +85,6 @@ func (h *App) UseRouter(router *Router) {
 }
 func (h *App) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	ctx := NewContext(writer, request)
-	print(ctx.path)
+
+	h.router.HandleHTTP(ctx)
 }

@@ -64,11 +64,34 @@ func NewContext(writer http.ResponseWriter, request *http.Request) *Context {
 		aborted:   false,
 	}
 }
-
+func (c *Context) SetHeader(key, value string) {
+	c.headers[key] = value
+}
+func (c *Context) SetStatus(code int) {
+	c.statusCode = code
+}
+func (c *Context) SendString(code int, body string) {
+	c.SetStatus(code)
+	c.SetHeader("Content-Type", "text/plain; charset=utf-8")
+	_, err := c.Writer.Write([]byte(body))
+	if err != nil {
+		panic(err)
+	}
+}
 func (c *Context) Next() {
 	c.index++
 	s := len(c.handlers)
 	for ; c.index < s; c.index++ {
 		c.handlers[c.index](c)
 	}
+}
+
+func HTTPNotFound(c *Context) {
+	c.SetStatus(http.StatusNotFound)
+	c.SetHeader("Content-Type", "text/plain; charset=utf-8")
+	_, err := c.Writer.Write([]byte("404 Not Found"))
+	if err != nil {
+		panic(err)
+	}
+
 }

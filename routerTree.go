@@ -5,6 +5,7 @@ import (
 )
 
 type nodeType uint8
+type HandleFuncChain []HandlerFunc
 
 const (
 	static   nodeType = iota // 静态节点
@@ -13,22 +14,20 @@ const (
 	catchAll                 // 通配符节点，如 *path
 )
 
-type HandlersChain []HandlerFunc
-
 // RouteNode 路由节点
 type RouteNode struct {
-	path      string        // 节点的路径（公共前缀）
-	indices   string        // 子节点首字符索引
-	children  []*RouteNode  // 子节点
-	Handlers  HandlersChain // 处理器链
-	priority  uint32        // 节点优先级
-	nType     nodeType      // 节点类型
-	maxParams uint8         // 子树中最大参数数量
-	wildChild bool          // 是否有通配符子节点
+	path      string          // 节点的路径（公共前缀）
+	indices   string          // 子节点首字符索引
+	children  []*RouteNode    // 子节点
+	handlers  HandleFuncChain // 处理器链
+	priority  uint32          // 节点优先级
+	nType     nodeType        // 节点类型
+	maxParams uint8           // 子树中最大参数数量
+	wildChild bool            // 是否有通配符子节点
 	paramName string
 }
 
-func (r *RouteNode) Insert(path string, handlers HandlersChain) {
+func (r *RouteNode) Insert(path string, handlers HandleFuncChain) {
 	if r == nil || len(path) == 0 {
 		return
 	}
@@ -58,7 +57,7 @@ func (r *RouteNode) Insert(path string, handlers HandlersChain) {
 				path:      part,
 				indices:   "",
 				children:  make([]*RouteNode, 0),
-				Handlers:  nil,
+				handlers:  nil,
 				priority:  current.priority + 1,
 				nType:     static,
 				maxParams: 0,
@@ -87,7 +86,7 @@ func (r *RouteNode) Insert(path string, handlers HandlersChain) {
 	}
 
 	// 设置处理器链
-	current.Handlers = handlers
+	current.handlers = handlers
 }
 
 func (r *RouteNode) NewTire() *RouteNode {
@@ -99,12 +98,12 @@ func (r *RouteNode) NewTire() *RouteNode {
 		maxParams: 0,
 		nType:     root,
 		wildChild: false,
-		Handlers:  nil,
+		handlers:  nil,
 		paramName: "",
 	}
 }
 
-// 获取路由
+// FindChild 获取路由
 func (r *RouteNode) FindChild(path string) (*RouteNode, map[string]string) {
 	if r == nil || path == "" {
 		return nil, nil

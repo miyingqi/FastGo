@@ -22,12 +22,12 @@ func (r *Router) getRoute(method string) *RouteNode {
 }
 
 // 添加路由
-func (r *Router) addRoute(path, method string, handlers HandlersChain) {
+func (r *Router) addRoute(path, method string, handlers HandleFuncChain) {
 	route := r.getRoute(method)
 	route.Insert(path, handlers)
 }
 
-// ServeHTTP 请求处理
+// HandleHTTP  请求处理
 func (r *Router) HandleHTTP(c *Context) {
 	method := c.method
 	path := c.path
@@ -35,19 +35,19 @@ func (r *Router) HandleHTTP(c *Context) {
 	// 获取对应方法的路由树
 	routeNode, ok := r.route[method]
 	if !ok {
-
+		HTTPNotFound(c)
 		return
 	}
 
 	// 在路由树中查找匹配的节点
 	matchedNode, _ := routeNode.FindChild(path)
-	if matchedNode == nil || matchedNode.Handlers == nil {
-
+	if matchedNode == nil || matchedNode.handlers == nil {
+		HTTPNotFound(c)
 		return
 	}
 
 	// 执行处理器链
-	for _, handler := range matchedNode.Handlers {
+	for _, handler := range matchedNode.handlers {
 		handler(c)
 	}
 }

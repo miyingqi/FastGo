@@ -12,6 +12,7 @@ func main() {
 	})
 	route.GET("/idn/k", func(c *FastGo.Context) {
 
+		c.SendString(200, "hello world")
 	})
 	route.GET("/idn/:id", func(c *FastGo.Context) {
 
