@@ -5,23 +5,16 @@ import (
 )
 
 func main() {
-	app := &FastGo.App{}
-	route := FastGo.NewRouter()
-	route.PUT("/1", func(c *FastGo.Context) {
-
+	app := FastGo.NewFastGo(":8080")
+	CorsConfig := FastGo.NewCors()
+	CorsConfig.
+		SetAllowOrigins("*").
+		SetAllowMethods("GET", "POST", "OPTIONS")
+	app.AddMiddleware(CorsConfig)
+	app.POST("/api/auth/send-verification-code", func(ctx *FastGo.Context) {
+		ctx.SendJson(200, FastGo.FJ{"code": "200"})
 	})
-	route.GET("/idn/k", func(c *FastGo.Context) {
-
-		c.SendString(200, "hello world")
-	})
-	route.GET("/idn/:id", func(c *FastGo.Context) {
-
-	})
-	route.GET("/idn/:id/:id/*h", func(c *FastGo.Context) {
-
-	})
-	app.UseRouter(route)
-	err := app.Run(":8080")
+	err := app.Run()
 	if err != nil {
 		panic(err)
 	}

@@ -13,33 +13,35 @@ import (
 )
 
 type App struct {
-	server *http.Server
-	router *Router
+	server      *http.Server
+	router      *Router
+	middlewares []Middleware
 }
 
-func (h *App) initServer(addr string, handler http.Handler) {
-	h.server = &http.Server{
-		Addr:           addr,
-		Handler:        handler,
-		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
-		IdleTimeout:    30 * time.Second,
-		MaxHeaderBytes: 1 << 20, // 1MB
-	}
-	if h.router == nil {
-		h.router = NewRouter()
+func NewFastGo(addr string) *App {
+	return &App{
+		server: &http.Server{
+			Addr:           addr,
+			Handler:        nil,
+			ReadTimeout:    10 * time.Second,
+			WriteTimeout:   10 * time.Second,
+			IdleTimeout:    30 * time.Second,
+			MaxHeaderBytes: 1 << 20, // 1MB
+		},
+		router:      NewRouter(),
+		middlewares: make([]Middleware, 0),
 	}
 
 }
 
 // Run 启动服务器并支持优雅关机
-func (h *App) Run(addr string) error {
+func (h *App) Run() error {
 
 	// 应用中间件链
+	h.server.Handler = h
 
-	fmt.Printf("准备启动服务器在 %s\n", addr)
+	fmt.Printf("准备启动服务器在 %s\n", h.server.Addr)
 
-	h.initServer(addr, h)
 	// 在一个新的 goroutine 中启动服务器
 	go func() {
 		if err := h.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -75,17 +77,52 @@ func (h *App) gracefulShutdown() error {
 	return nil
 }
 
-func (h *App) Use() {
+// Use 添加中间件到应用
+func (h *App) Use(middlewares ...Middleware) {
+	h.middlewares = append(h.middlewares, middlewares...)
+}
 
+// AddMiddleware 添加中间件到应用（与 Use 方法功能相同，提供另一种方式）
+func (h *App) AddMiddleware(middlewares ...Middleware) {
+	h.Use(middlewares...)
 }
-func (h *App) AddMiddleware() {
 
-}
-func (h *App) UseRouter(router *Router) {
-	h.router = router
-}
 func (h *App) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	ctx := NewContext(writer, request)
-	h.router.getRoute(request.Method).FindChild(request.URL.Path)
+
+	// 应用中间件链
+	h.applyMiddlewares(ctx)
+
 	h.router.HandleHTTP(ctx)
+}
+
+// applyMiddlewares 应用中间件链
+func (h *App) applyMiddlewares(ctx *Context) {
+	for _, middleware := range h.middlewares {
+		middleware.HandleHTTP(ctx)
+		// 如果中间件中设置了状态码或已写入响应，则停止执行后续中间件
+		if ctx.aborted {
+			return
+		}
+	}
+}
+
+// GET 添加路由
+func (h *App) GET(path string, handlers ...HandlerFunc) {
+	h.router.addRoute(path, "GET", handlers)
+}
+
+// POST 添加路由
+func (h *App) POST(path string, handlers ...HandlerFunc) {
+	h.router.addRoute(path, "POST", handlers)
+}
+
+// PUT 添加路由
+func (h *App) PUT(path string, handlers ...HandlerFunc) {
+	h.router.addRoute(path, "PUT", handlers)
+}
+
+// DELETE 添加路由
+func (h *App) DELETE(path string, handlers ...HandlerFunc) {
+	h.router.addRoute(path, "DELETE", handlers)
 }

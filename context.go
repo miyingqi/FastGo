@@ -1,13 +1,18 @@
 package FastGo
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
 )
 
+type FJ map[string]interface{}
 type HandlerFunc func(*Context)
+type Middleware interface {
+	HandleHTTP(*Context)
+}
 
 // Context 请求上下文
 type Context struct {
@@ -64,16 +69,42 @@ func NewContext(writer http.ResponseWriter, request *http.Request) *Context {
 		aborted:   false,
 	}
 }
-func (c *Context) SetHeader(key, value string) {
+func (c *Context) SetHeader(key string, values ...string) {
+	if len(values) == 0 {
+		return
+	}
+	var value string = ""
+	for i, v := range values {
+		if i > 0 {
+			value += ", " // 多个值用逗号分隔
+		}
+		value += v
+	}
 	c.headers[key] = value
+	c.Writer.Header().Set(key, value)
 }
+
 func (c *Context) SetStatus(code int) {
 	c.statusCode = code
 }
 func (c *Context) SendString(code int, body string) {
 	c.SetStatus(code)
 	c.SetHeader("Content-Type", "text/plain; charset=utf-8")
+	c.Writer.WriteHeader(code)
 	_, err := c.Writer.Write([]byte(body))
+	if err != nil {
+		panic(err)
+	}
+}
+func (c *Context) SendJson(code int, jsonData FJ) {
+	c.SetStatus(code)
+	c.SetHeader("Content-Type", "application/bytes; charset=utf-8")
+	for key, value := range c.headers {
+		c.SetHeader(key, value)
+	}
+	bytes, err := json.Marshal(jsonData)
+	c.Writer.WriteHeader(code)
+	_, err = c.Writer.Write(bytes)
 	if err != nil {
 		panic(err)
 	}
@@ -85,13 +116,16 @@ func (c *Context) Next() {
 		c.handlers[c.index](c)
 	}
 }
+func (c *Context) Abort() {
+	c.aborted = true
+}
 
 func HTTPNotFound(c *Context) {
 	c.SetStatus(http.StatusNotFound)
 	c.SetHeader("Content-Type", "text/plain; charset=utf-8")
+	c.Writer.WriteHeader(http.StatusNotFound)
 	_, err := c.Writer.Write([]byte("404 Not Found"))
 	if err != nil {
 		panic(err)
 	}
-
 }

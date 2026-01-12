@@ -51,23 +51,3 @@ func (r *Router) HandleHTTP(c *Context) {
 		handler(c)
 	}
 }
-
-// GET 添加路由
-func (r *Router) GET(path string, handlers ...HandlerFunc) {
-	r.addRoute(path, "GET", handlers)
-}
-
-// POST 添加路由
-func (r *Router) POST(path string, handlers ...HandlerFunc) {
-	r.addRoute(path, "POST", handlers)
-}
-
-// PUT 添加路由
-func (r *Router) PUT(path string, handlers ...HandlerFunc) {
-	r.addRoute(path, "PUT", handlers)
-}
-
-// DELETE 添加路由
-func (r *Router) DELETE(path string, handlers ...HandlerFunc) {
-	r.addRoute(path, "DELETE", handlers)
-}
