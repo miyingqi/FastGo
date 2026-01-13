@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,9 +15,12 @@ type App struct {
 	server      *http.Server
 	router      *Router
 	middlewares []Middleware
+	logger      *AsyncLogger
 }
 
 func NewFastGo(addr string) *App {
+	middlewares := make([]Middleware, 0)
+	middlewares = append(middlewares, NewLogMid())
 	return &App{
 		server: &http.Server{
 			Addr:           addr,
@@ -29,23 +31,22 @@ func NewFastGo(addr string) *App {
 			MaxHeaderBytes: 1 << 20, // 1MB
 		},
 		router:      NewRouter(),
-		middlewares: make([]Middleware, 0),
+		middlewares: middlewares,
+		logger:      NewAsyncLoggerSP(INFO),
 	}
 
 }
 
 // Run 启动服务器并支持优雅关机
 func (h *App) Run() error {
-
 	// 应用中间件链
 	h.server.Handler = h
-
-	fmt.Printf("准备启动服务器在 %s\n", h.server.Addr)
-
+	h.Use(h.router)
 	// 在一个新的 goroutine 中启动服务器
+	h.logger.Info("Starting FastGo:" + h.server.Addr)
 	go func() {
 		if err := h.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("服务器启动失败: %v\n", err)
+			h.logger.Error(err.Error())
 		}
 	}()
 
@@ -55,22 +56,21 @@ func (h *App) Run() error {
 func (h *App) gracefulShutdown() error {
 	// 创建一个缓冲通道来接收系统信号
 	quit := make(chan os.Signal, 1)
-
 	// 注册我们关心的信号：SIGINT (Ctrl+C) 和 SIGTERM (kill 命令的默认信号)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	// 阻塞，直到收到信号
-	sig := <-quit
-	fmt.Printf("\n接收到信号: %s，正在优关闭服务器...\n", sig)
+	_ = <-quit
+	h.logger.Info("FastGo is out!")
 
 	// 创建一个具有超时的上下文，用于Shutdown操作
 	// 这里设置5秒超时，你可以根据实际需要调整
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel() // 确保释放上下文资源
 
-	// 调用Shutdown开始优雅关机过程
+	// 调用Shutdown
 	if err := h.server.Shutdown(ctx); err != nil {
-		return fmt.Errorf("服务器强制关闭: %v", err)
+		h.logger.Info("FastGo is shutdown!")
+		return err
 	}
 
 	fmt.Println("服务器已退出")
@@ -89,22 +89,11 @@ func (h *App) AddMiddleware(middlewares ...Middleware) {
 
 func (h *App) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	ctx := NewContext(writer, request)
+	ctx.SetHandles(h.middlewares)
+	ctx.Next()
 
 	// 应用中间件链
-	h.applyMiddlewares(ctx)
 
-	h.router.HandleHTTP(ctx)
-}
-
-// applyMiddlewares 应用中间件链
-func (h *App) applyMiddlewares(ctx *Context) {
-	for _, middleware := range h.middlewares {
-		middleware.HandleHTTP(ctx)
-		// 如果中间件中设置了状态码或已写入响应，则停止执行后续中间件
-		if ctx.aborted {
-			return
-		}
-	}
 }
 
 // GET 添加路由
