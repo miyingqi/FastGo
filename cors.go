@@ -60,7 +60,7 @@ func (c *CorsConfig) HandleHTTP(ctx *Context) {
 	}
 
 	// 如果是预检请求
-	if ctx.method == "OPTIONS" {
+	if ctx.method == "OPTIONS" || ctx.Request.Header.Get("Access-Control-Request-Method") != "" {
 		c.handlePreflight(ctx)
 		return
 	}
@@ -126,7 +126,8 @@ func (c *CorsConfig) handlePreflight(ctx *Context) {
 	}
 
 	// 预检请求完成，不继续执行后续中间件
-	ctx.SetStatus(http.StatusOK)
+	ctx.SetStatus(204)
+	ctx.Write([]byte{})
 	return
 }
 

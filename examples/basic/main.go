@@ -5,6 +5,9 @@ import (
 )
 
 func main() {
+	loger := FastGo.NewAsyncLoggerSP(FastGo.DEBUG)
+	loger.SetLevel(FastGo.DEBUG)
+	loger.Debug("Hello World")
 	app := FastGo.NewFastGo(":8080")
 	CorsConfig := FastGo.NewCors()
 	CorsConfig.
