@@ -127,7 +127,7 @@ func (c *CorsConfig) handlePreflight(ctx *Context) {
 
 	// 预检请求完成，不继续执行后续中间件
 	ctx.SetStatus(204)
-	ctx.Write([]byte{})
+	_, _ = ctx.Write([]byte{})
 	return
 }
 

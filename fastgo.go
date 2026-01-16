@@ -3,10 +3,10 @@ package FastGo
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -16,6 +16,9 @@ type App struct {
 	router      *Router
 	middlewares []Middleware
 	logger      *AsyncLogger
+	contextPool *sync.Pool
+	certFile    string
+	keyFile     string
 }
 
 func NewFastGo(addr string) *App {
@@ -33,6 +36,9 @@ func NewFastGo(addr string) *App {
 		router:      NewRouter(),
 		middlewares: middlewares,
 		logger:      NewAsyncLoggerSP(INFO),
+		contextPool: nil,
+		certFile:    "",
+		keyFile:     "",
 	}
 
 }
@@ -41,11 +47,35 @@ func NewFastGo(addr string) *App {
 func (h *App) Run() error {
 	// 应用中间件链
 	h.server.Handler = h
-	h.Use(h.router)
-	// 在一个新的 goroutine 中启动服务器
-	h.logger.Info("Starting FastGo:" + h.server.Addr)
+	h.AddMiddleware(h.router)
+	contextpool := &sync.Pool{
+		New: func() interface{} {
+			// 返回零值的 Context 结构体，而不是调用 NewContext
+			return &Context{
+				params:      make(map[string]string),
+				headers:     make(map[string]string),
+				store:       make(map[interface{}]interface{}),
+				errors:      make([]error, 0),
+				middlewares: make([]Middleware, 0),
+			}
+		},
+	}
+
+	h.contextPool = contextpool
 	go func() {
-		if err := h.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		var err error
+		// 判断是否配置了证书文件
+		if h.certFile != "" && h.keyFile != "" {
+			h.logger.Info("Starting FastGo HTTPS on " + h.server.Addr)
+			// 启动 HTTPS 服务
+			err = h.server.ListenAndServeTLS(h.certFile, h.keyFile)
+		} else {
+			h.logger.Info("Starting FastGo HTTP on " + h.server.Addr)
+			// 启动 HTTP 服务
+			err = h.server.ListenAndServe()
+		}
+
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			h.logger.Error(err.Error())
 		}
 	}()
@@ -60,7 +90,6 @@ func (h *App) gracefulShutdown() error {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	// 阻塞，直到收到信号
 	_ = <-quit
-	h.logger.Info("FastGo is out!")
 
 	// 创建一个具有超时的上下文，用于Shutdown操作
 	// 这里设置5秒超时，你可以根据实际需要调整
@@ -73,24 +102,27 @@ func (h *App) gracefulShutdown() error {
 		return err
 	}
 
-	fmt.Println("服务器已退出")
+	h.logger.Info("FastGo exited")
 	return nil
-}
-
-// Use 添加中间件到应用
-func (h *App) Use(middlewares ...Middleware) {
-	h.middlewares = append(h.middlewares, middlewares...)
 }
 
 // AddMiddleware 添加中间件到应用（与 Use 方法功能相同，提供另一种方式）
 func (h *App) AddMiddleware(middlewares ...Middleware) {
-	h.Use(middlewares...)
+	h.middlewares = append(h.middlewares, middlewares...)
 }
 
 func (h *App) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	ctx := NewContext(writer, request)
+	ctx := h.contextPool.Get().(*Context)
+	ctx.Reset(writer, request)
 	ctx.SetHandles(h.middlewares)
 	ctx.Next()
+	h.contextPool.Put(ctx)
+}
+
+// SetTLS 设置证书路径，开启 HTTPS
+func (h *App) SetTLS(certFile, keyFile string) {
+	h.certFile = certFile
+	h.keyFile = keyFile
 }
 
 // GET 添加路由

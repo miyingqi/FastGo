@@ -40,8 +40,8 @@ type Context struct {
 	storeMutex sync.RWMutex
 
 	// 处理器链
-	handlers []HandlerFunc
-	index    int
+	middlewares []Middleware
+	index       int
 
 	// 错误处理
 	errors []error
@@ -58,21 +58,21 @@ type Context struct {
 
 func NewContext(writer http.ResponseWriter, request *http.Request) *Context {
 	return &Context{
-		Request:   request,
-		Writer:    writer,
-		method:    request.Method,
-		path:      request.URL.Path,
-		params:    make(map[string]string),
-		query:     request.URL.Query(),
-		headers:   make(map[string]string),
-		handlers:  make([]HandlerFunc, 0),
-		index:     -1,
-		errors:    make([]error, 0),
-		store:     make(map[interface{}]interface{}),
-		startTime: time.Now(),
-		requestID: request.Header.Get("X-Request-Id"),
-		aborted:   false,
-		written:   false,
+		Request:     request,
+		Writer:      writer,
+		method:      request.Method,
+		path:        request.URL.Path,
+		params:      make(map[string]string),
+		query:       request.URL.Query(),
+		headers:     make(map[string]string),
+		middlewares: nil,
+		index:       -1,
+		errors:      make([]error, 0),
+		store:       make(map[interface{}]interface{}),
+		startTime:   time.Now(),
+		requestID:   request.Header.Get("X-Request-Id"),
+		aborted:     false,
+		written:     false,
 	}
 }
 
@@ -102,6 +102,45 @@ func (c *Context) StatusString(code int) string {
 // SetStatus 仅设置状态码变量，不立即写入
 func (c *Context) SetStatus(code int) {
 	c.statusCode = code
+}
+
+// SetHandles 设置中间件链
+func (c *Context) SetHandles(mids []Middleware) {
+	c.middlewares = mids
+}
+
+// SetParam 设置单个路径参数（如 id -> 123）
+func (c *Context) SetParam(key, value string) {
+	c.params[key] = value
+}
+
+// GetParam 获取单个路径参数，不存在则返回空字符串
+func (c *Context) GetParam(key string) string {
+	return c.params[key]
+}
+
+// GetParamOrDefault 获取路径参数，不存在则返回默认值
+func (c *Context) GetParamOrDefault(key, defaultValue string) string {
+	if val, ok := c.params[key]; ok {
+		return val
+	}
+	return defaultValue
+}
+
+// GetParams 获取所有路径参数的副本（避免外部修改内部map）
+func (c *Context) GetParams() map[string]string {
+	paramsCopy := make(map[string]string, len(c.params))
+	for k, v := range c.params {
+		paramsCopy[k] = v
+	}
+	return paramsCopy
+}
+
+// ClearParams 清空所有路径参数（池化重置时调用）
+func (c *Context) ClearParams() {
+	for k := range c.params {
+		delete(c.params, k)
+	}
 }
 
 // Write 写入响应体（辅助方法，通常不直接暴露）
@@ -153,13 +192,13 @@ func (c *Context) SendJson(code int, jsonData FJ) {
 // Next 执行下一个中间件/处理器
 func (c *Context) Next() {
 	c.index++
-	s := len(c.handlers)
+	s := len(c.middlewares)
 	for ; c.index < s; c.index++ {
 		// 如果已经中止，停止执行
 		if c.aborted {
 			return
 		}
-		c.handlers[c.index](c)
+		c.middlewares[c.index].HandleHTTP(c)
 	}
 }
 
@@ -168,9 +207,22 @@ func (c *Context) Abort() {
 	c.aborted = true
 }
 
-// SetHandles 设置中间件链
-func (c *Context) SetHandles(middleware []Middleware) {
-	c.handlers = middlewaresToHandlerFuncs(middleware)
+func (c *Context) Reset(writer http.ResponseWriter, request *http.Request) {
+	c.Request = request
+	c.Writer = writer
+	c.method = request.Method
+	c.path = request.URL.Path
+	c.ClearParams()
+	c.query = request.URL.Query()
+	c.headers = make(map[string]string)
+	c.index = -1
+	c.errors = make([]error, 0)
+	c.store = make(map[interface{}]interface{})
+	c.startTime = time.Now()
+	c.requestID = request.Header.Get("X-Request-Id")
+	c.aborted = false
+	c.written = false
+
 }
 
 // HTTPNotFound 处理 404 错误
@@ -186,24 +238,4 @@ func HTTPNotFound(c *Context) {
 	}
 	// 4. 中止后续执行
 	c.Abort()
-}
-
-// 将 Middleware 接口转换为 HandlerFunc
-func middlewareToHandlerFunc(mw Middleware) HandlerFunc {
-	return func(c *Context) {
-		mw.HandleHTTP(c)
-	}
-}
-
-// 批量转换接口切片为 HandlerFunc 切片
-func middlewaresToHandlerFuncs(middlewares []Middleware) []HandlerFunc {
-	if len(middlewares) == 0 {
-		return nil
-	}
-
-	handlers := make([]HandlerFunc, len(middlewares))
-	for i, mw := range middlewares {
-		handlers[i] = middlewareToHandlerFunc(mw)
-	}
-	return handlers
 }
