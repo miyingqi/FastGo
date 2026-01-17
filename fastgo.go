@@ -51,13 +51,7 @@ func (h *App) Run() error {
 	contextpool := &sync.Pool{
 		New: func() interface{} {
 			// 返回零值的 Context 结构体，而不是调用 NewContext
-			return &Context{
-				params:      make(map[string]string),
-				headers:     make(map[string]string),
-				store:       make(map[interface{}]interface{}),
-				errors:      make([]error, 0),
-				middlewares: make([]Middleware, 0),
-			}
+			return NewContext()
 		},
 	}
 
@@ -125,22 +119,22 @@ func (h *App) SetTLS(certFile, keyFile string) {
 	h.keyFile = keyFile
 }
 
-// GET 添加路由
+// POST 添加路由
 func (h *App) GET(path string, handlers ...HandlerFunc) {
-	h.router.addRoute(path, "GET", handlers)
+	h.router.addRoute(path, "GET", handlers...)
 }
 
 // POST 添加路由
 func (h *App) POST(path string, handlers ...HandlerFunc) {
-	h.router.addRoute(path, "POST", handlers)
+	h.router.addRoute(path, "POST", handlers...)
 }
 
 // PUT 添加路由
 func (h *App) PUT(path string, handlers ...HandlerFunc) {
-	h.router.addRoute(path, "PUT", handlers)
+	h.router.addRoute(path, "PUT", handlers...)
 }
 
 // DELETE 添加路由
 func (h *App) DELETE(path string, handlers ...HandlerFunc) {
-	h.router.addRoute(path, "DELETE", handlers)
+	h.router.addRoute(path, "DELETE", handlers...)
 }

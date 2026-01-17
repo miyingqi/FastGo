@@ -12,7 +12,7 @@ func NewLogMid() *LogMid {
 	}
 }
 func (l *LogMid) HandleHTTP(ctx *Context) {
-	l.defaultLoggerMid.Info(ctx.clientIP + "-" + ctx.method + " ")
+	l.defaultLoggerMid.Info(ctx.GetClientIP() + "-" + ctx.GetMethod() + " ")
 	ctx.Next()
-	l.defaultLoggerMid.Info(ctx.clientIP + "-" + ctx.method + " " + strconv.Itoa(ctx.statusCode) + " " + ctx.StatusString(ctx.statusCode))
+	l.defaultLoggerMid.Info(ctx.GetClientIP() + "-" + ctx.GetMethod() + " " + strconv.Itoa(ctx.GetStatus()) + " " + ctx.StatusString(ctx.GetStatus()))
 }

@@ -8,7 +8,7 @@ func main() {
 	loger := FastGo.NewAsyncLoggerSP(FastGo.DEBUG)
 	loger.SetLevel(FastGo.DEBUG)
 	loger.Debug("Hello World")
-	app := FastGo.NewFastGo("0.0.0.0:443")
+	app := FastGo.NewFastGo("0.0.0.0:80")
 	CorsConfig := FastGo.NewCors()
 	CorsConfig.
 		SetAllowOrigins("*").
@@ -25,7 +25,11 @@ func main() {
 		param := ctx.GetParam("file")
 		ctx.SendString(200, param)
 	})
-	app.SetTLS("E:\\GO\\src\\FastGo\\config\\certificate.crt", "E:\\GO\\src\\FastGo\\config\\private.key")
+	app.GET("/api/file/:file/io", func(ctx *FastGo.Context) {
+		param := ctx.GetParam("file")
+		ctx.SendString(200, param)
+	})
+
 	err := app.Run()
 	if err != nil {
 		panic(err)
