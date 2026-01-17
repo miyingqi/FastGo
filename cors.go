@@ -30,8 +30,10 @@ func NewCors() *CorsConfig {
 	}
 }
 
+// ... 所有的 Set 方法保持不变 ...
+
 func (c *CorsConfig) HandleHTTP(ctx *Context) {
-	origin := ctx.GetHeader("Origin")
+	origin := ctx.Request.Header.Get("Origin")
 
 	// 如果没有 Origin 头，这不是 CORS 请求，直接继续
 	if origin == "" {
@@ -45,7 +47,7 @@ func (c *CorsConfig) HandleHTTP(ctx *Context) {
 	// 检查源是否被允许
 	if !c.isAllowedOrigin(origin) {
 		ctx.SetStatus(http.StatusForbidden)
-		_, _ = ctx.Write([]byte("Origin not allowed"))
+		_, _ = ctx.Writer.Write([]byte("Origin not allowed"))
 		return
 	}
 
@@ -58,7 +60,7 @@ func (c *CorsConfig) HandleHTTP(ctx *Context) {
 	}
 
 	// 如果是预检请求
-	if ctx.GetMethod() == "OPTIONS" || ctx.GetHeader("Access-Control-Request-Method") != "" {
+	if ctx.method == "OPTIONS" || ctx.Request.Header.Get("Access-Control-Request-Method") != "" {
 		c.handlePreflight(ctx)
 		return
 	}
@@ -70,15 +72,15 @@ func (c *CorsConfig) HandleHTTP(ctx *Context) {
 
 func (c *CorsConfig) handlePreflight(ctx *Context) {
 	ctx.Abort()
-	origin := ctx.GetHeader("Origin")
-	requestMethod := ctx.GetHeader("Access-Control-Request-Method")
-	requestHeaders := ctx.GetHeader("Access-Control-Request-Headers")
+	origin := ctx.Request.Header.Get("Origin")
+	requestMethod := ctx.Request.Header.Get("Access-Control-Request-Method")
+	requestHeaders := ctx.Request.Header.Get("Access-Control-Request-Headers")
 
 	// 检查请求的方法是否被允许
 	if requestMethod == "" || !c.isAllowedMethod(requestMethod) {
 		ctx.Abort()
 		ctx.SetStatus(http.StatusForbidden)
-		_, _ = ctx.Write([]byte("Method not allowed"))
+		_, _ = ctx.Writer.Write([]byte("Method not allowed"))
 		return
 	}
 
@@ -89,7 +91,7 @@ func (c *CorsConfig) handlePreflight(ctx *Context) {
 			header = strings.TrimSpace(header)
 			if !c.isAllowedHeaders(header) {
 				ctx.SetStatus(http.StatusForbidden)
-				_, _ = ctx.Write([]byte("Header not allowed: " + header))
+				_, _ = ctx.Writer.Write([]byte("Header not allowed: " + header))
 				return
 			}
 		}
@@ -125,12 +127,12 @@ func (c *CorsConfig) handlePreflight(ctx *Context) {
 
 	// 预检请求完成，不继续执行后续中间件
 	ctx.SetStatus(204)
-	_, _ = ctx.Write([]byte{})
+	ctx.Write([]byte{})
 	return
 }
 
 func (c *CorsConfig) handleRequest(ctx *Context) {
-	origin := ctx.GetHeader("Origin")
+	origin := ctx.Request.Header.Get("Origin")
 
 	// 设置允许的源
 	ctx.SetHeader("Access-Control-Allow-Origin", origin)
