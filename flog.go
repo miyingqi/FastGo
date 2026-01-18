@@ -25,10 +25,8 @@ const (
 	FATAL
 )
 
-// 将字符串常量转换为数组索引访问
 var levelStrings = [5]string{"DEBUG", "INFO", "WARN", "ERROR", "FATAL"}
 
-// ANSI 颜色代码
 const (
 	ColorReset   = "\033[0m"
 	ColorRed     = "\033[31m"
@@ -39,7 +37,6 @@ const (
 	ColorBoldRed = "\033[1;31m"
 )
 
-// levelColors 日志级别颜色映射
 var levelColors = [5]string{
 	DEBUG:   ColorCyan,
 	INFO:    ColorGreen,
@@ -62,12 +59,9 @@ func newColorManager() *colorManager {
 
 // detectColorSupport 检测当前环境是否支持颜色
 func (cm *colorManager) detectColorSupport() {
-	// Windows环境检测
 	if runtime.GOOS == "windows" {
-		// Windows 10及以上版本支持ANSI颜色
 		cm.supportsColor = true // 简化处理
 	} else {
-		// Unix-like系统检测
 		cm.supportsColor = cm.isTerminal(os.Stdout) &&
 			os.Getenv("TERM") != "dumb" &&
 			os.Getenv("NO_COLOR") == ""
@@ -179,7 +173,6 @@ type AsyncLogger struct {
 
 // NewAsyncLogger 创建异步日志记录器
 func NewAsyncLogger(config LoggerConfig) *AsyncLogger {
-	// 应用默认值
 	if config.Output == nil {
 		config.Output = defaultConfig.Output
 	}
@@ -276,27 +269,22 @@ func (al *AsyncLogger) processRecord(record LogRecord) {
 		al.bufPool.Put(buf)
 	}()
 
-	// 获取当前时间戳
 	timestamp := record.Time.Format("2006-01-02 15:04:05")
 
-	// 构建日志消息
 	buf.WriteString("[")
 	buf.WriteString(timestamp)
 	buf.WriteString("] [")
 
-	// 应用级别颜色
 	levelText := al.colorManager.ApplyLevelColor(record.Level, record.EnableColor && al.enableColor)
 	buf.WriteString(levelText)
 	buf.WriteString("] ")
 	buf.WriteString(record.Message)
 
-	// 添加字段信息
 	if len(record.Fields) > 0 {
 		buf.WriteString(" |")
 		for k, v := range record.Fields {
 			buf.WriteString(" ")
 
-			// 应用键名颜色（粗体）
 			keyText := al.colorManager.ApplyColor(k, ColorBold, record.EnableColor && al.enableColor)
 			buf.WriteString(keyText)
 			buf.WriteString("=")
@@ -306,10 +294,8 @@ func (al *AsyncLogger) processRecord(record LogRecord) {
 
 	buf.WriteString("\n")
 
-	// 写入输出
 	_, err := al.output.Write(buf.Bytes())
 	if err != nil {
-		// 记录错误但不中断处理
 		_, _ = fmt.Fprintf(os.Stderr, "Failed to write log: %v\n", err)
 	}
 }
@@ -361,9 +347,7 @@ func (al *AsyncLogger) enqueue(level LogLevel, msg string, fields map[string]int
 
 	select {
 	case al.queue <- record:
-		// 成功添加到队列
 	default:
-		// 队列满，丢弃日志或记录警告
 		_, _ = fmt.Fprintf(os.Stderr, "Log queue full, dropping log: %s\n", msg)
 	}
 }
@@ -401,20 +385,17 @@ func (al *AsyncLogger) Error(msg string, fields ...map[string]interface{}) {
 // Fatal 异步记录致命错误日志并退出
 func (al *AsyncLogger) Fatal(msg string, fields ...map[string]interface{}) {
 	al.enqueue(FATAL, msg, mergeFields(fields...), al.enableColor)
-	// 等待队列清空后再退出
 	al.Flush()
 	os.Exit(1)
 }
 
 // Sync 等待所有日志处理完成
 func (al *AsyncLogger) Sync() {
-	// 计算当前队列长度并等待处理
 	queueLen := len(al.queue)
 	if queueLen == 0 {
 		return
 	}
 
-	// 等待一段时间让队列处理完毕
 	start := time.Now()
 	for len(al.queue) > 0 {
 		if time.Since(start) > time.Second*5 {
@@ -435,9 +416,9 @@ func (al *AsyncLogger) Close() error {
 		return nil // 已经关闭
 	}
 
-	al.cancel()     // 取消上下文
-	close(al.queue) // 关闭通道
-	al.wg.Wait()    // 等待所有工作协程结束
+	al.cancel()
+	close(al.queue)
+	al.wg.Wait()
 	return nil
 }
 
@@ -491,7 +472,6 @@ func (fw *FileWriter) Write(p []byte) (n int, err error) {
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
 
-	// 检查文件大小并决定是否轮转
 	if fw.maxSize > 0 {
 		currentSize := int64(len(p))
 		if stat, err := fw.file.Stat(); err == nil {
@@ -513,15 +493,12 @@ func (fw *FileWriter) rotate() error {
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
 
-	// 关闭当前文件
 	if err := fw.file.Close(); err != nil {
 		return fmt.Errorf("failed to close current log file: %v", err)
 	}
 
-	// 重命名当前文件为带时间戳的备份
 	backupName := fmt.Sprintf("%s.%s", fw.filePath, time.Now().Format("2006-01-02T15-04-05"))
 	if err := os.Rename(fw.filePath, backupName); err != nil {
-		// 如果重命名失败，尝试重新打开原文件
 		file, err2 := os.OpenFile(fw.filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err2 != nil {
 			return fmt.Errorf("failed to reopen original file after rotation failure: %v, original error: %v", err2, err)
@@ -530,7 +507,6 @@ func (fw *FileWriter) rotate() error {
 		return fmt.Errorf("failed to rotate log file: %v", err)
 	}
 
-	// 创建新文件
 	file, err := os.OpenFile(fw.filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to create new log file: %v", err)
@@ -726,7 +702,6 @@ func SafeFormat(format string, args ...interface{}) string {
 
 	defer func() {
 		if r := recover(); r != nil {
-			// 如果格式化失败，返回原始字符串
 			_, _ = fmt.Fprintf(os.Stderr, "Format error: %v\n", r)
 		}
 	}()

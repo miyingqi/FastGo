@@ -88,7 +88,7 @@ func (group *RouteGroup) addRoute(method, path string, handler HandlerFunc) {
 	group.router.addRoute(path, method, handlers)
 }
 
-// 获取路由
+// getRoute 获取路由
 func (r *Router) getRoute(method string) *routeNode {
 	route, ok := r.route[method]
 	if !ok {
@@ -98,7 +98,7 @@ func (r *Router) getRoute(method string) *routeNode {
 	return route
 }
 
-// 添加路由
+// addRoute 添加路由
 func (r *Router) addRoute(path, method string, handlers HandleFuncChain) {
 	route := r.getRoute(method)
 	route.Insert(path, handlers)
@@ -109,26 +109,22 @@ func (r *Router) HandleHTTP(c *Context) {
 	method := c.method
 	path := c.path
 
-	// 获取对应方法的路由树
 	routeNode, ok := r.route[method]
 	if !ok {
 		HTTPNotFound(c)
 		return
 	}
 
-	// 在路由树中查找匹配的节点
 	matchedNode, params := routeNode.FindChild(path)
 	if matchedNode == nil || matchedNode.Handlers == nil {
 		HTTPNotFound(c)
 		return
 	}
 
-	// 将参数添加到Context中
 	for key, value := range params {
 		c.Params = append(c.Params, Param{Key: key, Value: value})
 	}
 
-	// 执行处理器链
 	for _, handler := range matchedNode.Handlers {
 		handler(c)
 	}
@@ -188,7 +184,6 @@ func (r *routeNode) Insert(path string, handlers HandleFuncChain) {
 		return
 	}
 
-	// 分割路径
 	parts := splitPath(path)
 	current := r
 
@@ -199,7 +194,6 @@ func (r *routeNode) Insert(path string, handlers HandleFuncChain) {
 
 		var child *routeNode
 
-		// 检查是否已存在匹配的子节点
 		for _, c := range current.children {
 			if c.path == part {
 				child = c
@@ -207,7 +201,6 @@ func (r *routeNode) Insert(path string, handlers HandleFuncChain) {
 			}
 		}
 
-		// 如果不存在，则创建新节点
 		if child == nil {
 			child = &routeNode{
 				path:      part,
@@ -221,7 +214,6 @@ func (r *routeNode) Insert(path string, handlers HandleFuncChain) {
 				paramName: "",
 			}
 
-			// 判断节点类型
 			if part[0] == ':' {
 				child.nType = param
 				child.paramName = strings.TrimPrefix(part, ":")
@@ -241,7 +233,6 @@ func (r *routeNode) Insert(path string, handlers HandleFuncChain) {
 		current = child
 	}
 
-	// 设置处理器链
 	current.Handlers = handlers
 }
 
@@ -281,7 +272,6 @@ func (r *routeNode) FindChild(path string) (*routeNode, map[string]string) {
 			return nil, nil
 		}
 
-		// 首先尝试精确匹配
 		for _, c := range current.children {
 			if c.path == part {
 				child = c
@@ -290,26 +280,22 @@ func (r *routeNode) FindChild(path string) (*routeNode, map[string]string) {
 			}
 		}
 
-		// 如果没找到精确匹配，尝试参数匹配
 		if !found {
 			for _, c := range current.children {
 				if c.nType == param {
 					child = c
 					found = true
-					// 存储参数值
 					params[c.paramName] = part
 					break
 				}
 			}
 		}
 
-		// 如果还没找到，尝试通配符匹配
 		if !found {
 			for _, c := range current.children {
 				if c.nType == catchAll && c.wildChild {
 					child = c
 					found = true
-					// 存储通配符参数
 					params[c.paramName] = part
 					break
 				}
@@ -343,7 +329,7 @@ func (r *routeNode) calculateMaxParams() uint8 {
 	return maxParams + r.maxParams
 }
 
-// 分割路径
+// splitPath 分割路径
 func splitPath(path string) []string {
 	if path == "/" {
 		return []string{}
