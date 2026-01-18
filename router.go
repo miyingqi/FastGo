@@ -18,9 +18,10 @@ type Router struct {
 
 // RouteGroup 表示路由组
 type RouteGroup struct {
-	prefix   string
-	handlers HandleFuncChain
-	router   *Router
+	prefix      string
+	handlers    HandleFuncChain
+	router      *Router
+	parentGroup *RouteGroup // 新增：父级分组，用于嵌套分组
 }
 
 // NewRouter 创建路由
@@ -33,9 +34,20 @@ func NewRouter() *Router {
 // Group 创建一个新的路由组
 func (r *Router) Group(prefix string) *RouteGroup {
 	return &RouteGroup{
-		prefix:   prefix,
-		handlers: nil,
-		router:   r,
+		prefix:      prefix,
+		handlers:    nil,
+		router:      r,
+		parentGroup: nil, // 根分组没有父分组
+	}
+}
+
+// Group 创建嵌套路由组
+func (group *RouteGroup) Group(prefix string) *RouteGroup {
+	return &RouteGroup{
+		prefix:      group.prefix + prefix,
+		handlers:    nil,
+		router:      group.router,
+		parentGroup: group, // 设置当前分组为父分组
 	}
 }
 
@@ -81,11 +93,49 @@ func (group *RouteGroup) HEAD(path string, handler HandlerFunc) {
 
 // addRoute 为路由组添加路由
 func (group *RouteGroup) addRoute(method, path string, handler HandlerFunc) {
-	path = group.prefix + path
-	handlers := make(HandleFuncChain, 0, len(group.handlers)+1)
-	handlers = append(handlers, group.handlers...)
+	fullPath := group.getFullPath(path)
+	handlers := make(HandleFuncChain, 0, len(group.getAllHandlers())+1)
+	handlers = append(handlers, group.getAllHandlers()...)
 	handlers = append(handlers, handler)
-	group.router.addRoute(path, method, handlers)
+	group.router.addRoute(fullPath, method, handlers)
+}
+
+// getFullPath 获取完整路径，包括所有父级分组的前缀
+func (group *RouteGroup) getFullPath(path string) string {
+	var prefixes []string
+
+	// 从当前分组向上追溯到根分组，收集所有前缀
+	current := group
+	for current != nil {
+		if current.prefix != "" {
+			prefixes = append([]string{current.prefix}, prefixes...) // 在前面插入，保持正确顺序
+		}
+		current = current.parentGroup
+	}
+
+	// 组合所有前缀和最终路径
+	fullPath := strings.Join(prefixes, "") + path
+	return fullPath
+}
+
+// getAllHandlers 获取包括父级分组在内的所有处理器
+func (group *RouteGroup) getAllHandlers() HandleFuncChain {
+	var allHandlers HandleFuncChain
+
+	// 从根分组开始，按顺序添加所有中间件
+	group.collectHandlersFromRoot((*[]HandlerFunc)(&allHandlers))
+
+	return allHandlers
+}
+
+// collectHandlersFromRoot 从根分组开始收集所有处理器
+func (group *RouteGroup) collectHandlersFromRoot(handlers *[]HandlerFunc) {
+	if group.parentGroup != nil {
+		group.parentGroup.collectHandlersFromRoot(handlers)
+	}
+
+	// 添加当前分组的处理器
+	*handlers = append(*handlers, group.handlers...)
 }
 
 // getRoute 获取路由

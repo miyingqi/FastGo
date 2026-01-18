@@ -68,6 +68,85 @@ func main() {
 		})
 	}
 
+	// 演示嵌套分组功能
+	apiV2Group := app.Group("/api")
+	{
+		v2Group := apiV2Group.Group("/v2") // 嵌套分组
+		{
+			usersV2Group := v2Group.Group("/users") // 更深层嵌套
+			{
+				usersV2Group.GET("/list", func(c *FastGo.Context) {
+					c.SendString(200, "API v2 - Users List")
+				})
+
+				usersV2Group.POST("/create", func(c *FastGo.Context) {
+					c.SendString(200, "API v2 - Create User")
+				})
+
+				// 更深层的嵌套
+				adminV2Group := usersV2Group.Group("/admin") // 三层嵌套
+				{
+					adminV2Group.GET("/permissions", func(c *FastGo.Context) {
+						c.SendString(200, "API v2 - Users Admin Permissions")
+					})
+
+					adminV2Group.POST("/roles", func(c *FastGo.Context) {
+						c.SendString(200, "API v2 - Set User Roles")
+					})
+				}
+			}
+
+			// 同级的其他分组
+			productsV2Group := v2Group.Group("/products")
+			{
+				productsV2Group.GET("/list", func(c *FastGo.Context) {
+					c.SendString(200, "API v2 - Products List")
+				})
+
+				productsV2Group.POST("/create", func(c *FastGo.Context) {
+					c.SendString(200, "API v2 - Create Product")
+				})
+			}
+		}
+	}
+
+	// 另一个嵌套示例 - 用户面板
+	userPanelGroup := app.Group("/user")
+	{
+		dashboardGroup := userPanelGroup.Group("/dashboard") // 嵌套
+		{
+			settingsGroup := dashboardGroup.Group("/settings") // 再次嵌套
+			{
+				settingsGroup.GET("", func(c *FastGo.Context) {
+					c.SendString(200, "User Dashboard Settings")
+				})
+
+				profileGroup := settingsGroup.Group("/profile") // 三层嵌套
+				{
+					profileGroup.GET("", func(c *FastGo.Context) {
+						c.SendString(200, "User Profile Settings")
+					})
+
+					profileGroup.PUT("", func(c *FastGo.Context) {
+						c.SendString(200, "Update User Profile")
+					})
+				}
+			}
+		}
+	}
+
+	fmt.Println("服务器启动在 :8080 端口")
+	fmt.Println("嵌套分组示例:")
+	fmt.Println("  GET  /api/v2/users/list")
+	fmt.Println("  POST /api/v2/users/create")
+	fmt.Println("  GET  /api/v2/users/admin/permissions")
+	fmt.Println("  POST /api/v2/users/admin/roles")
+	fmt.Println("  GET  /api/v2/products/list")
+	fmt.Println("  POST /api/v2/products/create")
+	fmt.Println("  GET  /user/dashboard/settings")
+	fmt.Println("  GET  /user/dashboard/settings/profile")
+	fmt.Println("  PUT  /user/dashboard/settings/profile")
+
 	if err := app.Run(); err != nil {
 		fmt.Printf("Server error: %v\n", err)
 	}
