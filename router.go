@@ -44,7 +44,7 @@ func (r *Router) Group(prefix string) *RouteGroup {
 // Group 创建嵌套路由组
 func (group *RouteGroup) Group(prefix string) *RouteGroup {
 	return &RouteGroup{
-		prefix:      group.prefix + prefix,
+		prefix:      prefix, // 只存储传入的前缀，不与父级前缀拼接
 		handlers:    nil,
 		router:      group.router,
 		parentGroup: group, // 设置当前分组为父分组
@@ -113,8 +113,16 @@ func (group *RouteGroup) getFullPath(path string) string {
 		current = current.parentGroup
 	}
 
-	// 组合所有前缀和最终路径
-	fullPath := strings.Join(prefixes, "") + path
+	// 组合所有前缀和最终路径，确保路径分隔符正确
+	fullPath := strings.Join(prefixes, "/")
+	if path != "" {
+		fullPath += "/" + path
+	}
+	// 确保路径格式正确，移除重复斜杠并规范化
+	fullPath = strings.ReplaceAll(fullPath, "//", "/")
+	if fullPath != "/" {
+		fullPath = strings.TrimRight(fullPath, "/")
+	}
 	return fullPath
 }
 
@@ -142,7 +150,7 @@ func (group *RouteGroup) collectHandlersFromRoot(handlers *[]HandlerFunc) {
 func (r *Router) getRoute(method string) *routeNode {
 	route, ok := r.route[method]
 	if !ok {
-		route = route.NewTire()
+		route = (&routeNode{}).NewTire()
 	}
 	r.route[method] = route
 	return route
