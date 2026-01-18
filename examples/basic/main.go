@@ -9,53 +9,65 @@ import (
 func main() {
 	app := FastGo.NewFastGo(":8080")
 
-	// 使用路由组功能
-	apiV1 := app.Router().Group("/api/v1")
+	// 创建独立的路由器
+	userRouter := FastGo.NewRouter()
+	userGroup := userRouter.Group("/users")
 	{
-		apiV1.GET("/users", func(c *FastGo.Context) {
-			c.SendString(200, "GET /api/v1/users")
+		userGroup.GET("", func(c *FastGo.Context) {
+			c.SendString(200, "GET /users")
 		})
-		apiV1.POST("/users", func(c *FastGo.Context) {
-			c.SendString(200, "POST /api/v1/users")
+		userGroup.POST("", func(c *FastGo.Context) {
+			c.SendString(200, "POST /users")
 		})
-		apiV1.GET("/users/:id", func(c *FastGo.Context) {
+		userGroup.GET("/:id", func(c *FastGo.Context) {
 			id := c.Params.ByName("id")
-			c.SendString(200, fmt.Sprintf("GET /api/v1/users/%s", id))
+			c.SendString(200, fmt.Sprintf("GET /users/%s", id))
 		})
-		apiV1.PUT("/users/:id", func(c *FastGo.Context) {
+		userGroup.PUT("/:id", func(c *FastGo.Context) {
 			id := c.Params.ByName("id")
-			c.SendString(200, fmt.Sprintf("PUT /api/v1/users/%s", id))
+			c.SendString(200, fmt.Sprintf("PUT /users/%s", id))
 		})
-		apiV1.DELETE("/users/:id", func(c *FastGo.Context) {
+		userGroup.DELETE("/:id", func(c *FastGo.Context) {
 			id := c.Params.ByName("id")
-			c.SendString(200, fmt.Sprintf("DELETE /api/v1/users/%s", id))
+			c.SendString(200, fmt.Sprintf("DELETE /users/%s", id))
 		})
 	}
 
-	admin := app.Router().Group("/admin")
+	// 使用AddRouter将独立路由器合并到主应用
+	app.AddRouter(userRouter)
+
+	// 使用Group方法创建路由组
+	adminGroup := app.Group("/admin")
 	{
 		// 为admin组添加中间件
-		admin.Use(func(c *FastGo.Context) {
+		adminGroup.Use(func(c *FastGo.Context) {
 			fmt.Println("Admin middleware executed")
 			c.SetHeader("X-Middleware", "admin")
 			c.Next()
 		})
 
-		admin.GET("/dashboard", func(c *FastGo.Context) {
+		adminGroup.GET("/dashboard", func(c *FastGo.Context) {
 			c.SendString(200, "Admin Dashboard")
 		})
-		admin.GET("/users", func(c *FastGo.Context) {
+		adminGroup.GET("/users", func(c *FastGo.Context) {
 			c.SendString(200, "Admin Users Management")
 		})
 	}
 
-	// 根路由
-	app.Router().GET("/", func(c *FastGo.Context) {
-		c.SendString(200, "Hello, FastGo!")
-	})
+	// 添加其他路由
+	apiGroup := app.Group("/api/v1")
+	{
+		apiGroup.GET("/ping", func(c *FastGo.Context) {
+			c.SendString(200, "API v1 Ping")
+		})
+		apiGroup.GET("/status", func(c *FastGo.Context) {
+			c.SendJson(200, FastGo.FJ{
+				"status": "ok",
+				"server": "FastGo",
+			})
+		})
+	}
 
-	// 启动服务器
-	fmt.Println("Server is starting on :8080")
 	if err := app.Run(); err != nil {
 		fmt.Printf("Server error: %v\n", err)
 	}

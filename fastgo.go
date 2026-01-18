@@ -16,7 +16,7 @@ type App struct {
 	server      *http.Server
 	router      *Router
 	middlewares []Middleware
-	logger      *AsyncLogger
+	logger      *SyncLogger
 	contextPool sync.Pool // 上下文池
 }
 
@@ -25,11 +25,26 @@ func (h *App) Router() *Router {
 	return h.router
 }
 
+// SetRoutes 允许通过函数设置路由
+func (h *App) SetRoutes(setupFunc func(*Router)) {
+	setupFunc(h.router)
+}
+
+// Group 创建路由组
+func (h *App) Group(prefix string) *RouteGroup {
+	return h.router.Group(prefix)
+}
+
+// AddRouter 添加一个完整的路由器
+func (h *App) AddRouter(router *Router) {
+	h.router.MergeRouter(router)
+}
+
 func NewFastGo(addr string) *App {
 	router := NewRouter()
 
 	middlewares := make([]Middleware, 0)
-	middlewares = append(middlewares, NewLogMid())
+	middlewares = append(middlewares, NewMiddlewareLog())
 	middlewares = append(middlewares, router)
 
 	app := &App{
@@ -43,7 +58,7 @@ func NewFastGo(addr string) *App {
 		},
 		router:      router,
 		middlewares: middlewares,
-		logger:      NewAsyncLoggerSP(INFO),
+		logger:      NewSyncLogger(INFO),
 	}
 
 	app.contextPool.New = func() interface{} {
@@ -67,10 +82,10 @@ func (h *App) AddMiddleware(middlewares ...Middleware) {
 // Run 启动服务器并支持优雅关机
 func (h *App) Run() error {
 	h.server.Handler = h
-	h.logger.Info("Starting FastGo: " + h.server.Addr)
+	h.logger.InfoWithModule("APP", "Starting FastGo: "+h.server.Addr)
 	go func() {
 		if err := h.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			h.logger.Error(fmt.Sprintf("Server error: %v", err))
+			h.logger.ErrorWithModule("APP", fmt.Sprintf("Server error: %v", err))
 		}
 	}()
 
@@ -81,18 +96,18 @@ func (h *App) gracefulShutdown() error {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	_ = <-quit
-	h.logger.Info("FastGo is shutting down...")
+	h.logger.InfoWithModule("APP", "FastGo is shutting down...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	h.logger.Info("Shutting down server...")
+	h.logger.InfoWithModule("APP", "Shutting down server...")
 	if err := h.server.Shutdown(ctx); err != nil {
-		h.logger.Error(fmt.Sprintf("Server shutdown error: %v", err))
+		h.logger.ErrorWithModule("APP", fmt.Sprintf("Server shutdown error: %v", err))
 		return err
 	}
 
-	h.logger.Info("Server stopped gracefully")
+	h.logger.InfoWithModule("APP", "Server stopped gracefully")
 	fmt.Println("服务器已优雅退出")
 	return nil
 }

@@ -166,6 +166,62 @@ func (r *Router) HEAD(path string, handler HandlerFunc) {
 	r.addRoute(path, "HEAD", HandleFuncChain{handler})
 }
 
+// MergeRouter 合并另一个路由器的路由
+func (r *Router) MergeRouter(other *Router) {
+	for method, routeNode := range other.route {
+		if existingRoute, exists := r.route[method]; exists {
+			// 如果该HTTP方法已存在路由，则需要合并路由树
+			mergeRouteNodes(existingRoute, routeNode)
+		} else {
+			// 如果该HTTP方法不存在路由，则直接复制整个路由树
+			r.route[method] = routeNode
+		}
+	}
+}
+
+// mergeRouteNodes 合并两个路由节点树
+func mergeRouteNodes(existing, other *routeNode) {
+	// 这里需要实现具体的路由节点合并逻辑
+	// 简单的合并策略：other节点覆盖existing节点
+	// 但通常我们会想要递归合并而不是覆盖
+	if other.Handlers != nil {
+		existing.Handlers = other.Handlers
+	}
+	for _, otherChild := range other.children {
+		// 使用 indices 优化查找过程
+		var existingChild *routeNode
+		if len(otherChild.path) > 0 {
+			firstChar := otherChild.path[0:1]
+			// 检查第一个字符是否在 indices 中
+			if strings.Contains(existing.indices, firstChar) {
+				// 只在对应首字符的节点中查找
+				for _, ec := range existing.children {
+					if ec.path[0:1] == firstChar && ec.path == otherChild.path {
+						existingChild = ec
+						break
+					}
+				}
+			}
+		} else {
+			// 如果otherChild.path为空，则遍历所有子节点
+			for _, ec := range existing.children {
+				if ec.path == otherChild.path {
+					existingChild = ec
+					break
+				}
+			}
+		}
+		if existingChild != nil {
+			// 如果找到匹配的子节点，递归合并
+			mergeRouteNodes(existingChild, otherChild)
+		} else {
+			// 如果没有匹配的子节点，直接添加
+			existing.children = append(existing.children, otherChild)
+			existing.indices += otherChild.path[0:1]
+		}
+	}
+}
+
 // routeNode 路由节点
 type routeNode struct {
 	path      string          // 节点的路径（公共前缀）
@@ -194,10 +250,26 @@ func (r *routeNode) Insert(path string, handlers HandleFuncChain) {
 
 		var child *routeNode
 
-		for _, c := range current.children {
-			if c.path == part {
-				child = c
-				break
+		// 使用 indices 优化查找过程
+		if len(part) > 0 {
+			firstChar := part[0:1]
+			// 检查第一个字符是否在 indices 中
+			if strings.Contains(current.indices, firstChar) {
+				// 只在对应首字符的节点中查找
+				for _, c := range current.children {
+					if c.path[0:1] == firstChar && c.path == part {
+						child = c
+						break
+					}
+				}
+			}
+		} else {
+			// 如果part为空，则遍历所有子节点
+			for _, c := range current.children {
+				if c.path == part {
+					child = c
+					break
+				}
 			}
 		}
 
@@ -265,21 +337,32 @@ func (r *routeNode) FindChild(path string) (*routeNode, map[string]string) {
 			continue
 		}
 
-		var child = &routeNode{}
+		var child *routeNode
 		found := false
 
 		if len(current.children) == 0 {
 			return nil, nil
 		}
 
-		for _, c := range current.children {
-			if c.path == part {
-				child = c
-				found = true
-				break
+		// 首先尝试使用 indices 字段进行快速查找
+		if len(part) > 0 {
+			firstChar := part[0:1]
+			// 检查第一个字符是否在 indices 中
+			if strings.Contains(current.indices, firstChar) {
+				// 在 children 中只查找对应首字符的节点
+				for _, c := range current.children {
+					if c.path[0:1] == firstChar {
+						if c.path == part {
+							child = c
+							found = true
+							break
+						}
+					}
+				}
 			}
 		}
 
+		// 如果没有找到静态匹配，尝试参数节点
 		if !found {
 			for _, c := range current.children {
 				if c.nType == param {
@@ -291,6 +374,7 @@ func (r *routeNode) FindChild(path string) (*routeNode, map[string]string) {
 			}
 		}
 
+		// 如果没有找到参数匹配，尝试通配符节点
 		if !found {
 			for _, c := range current.children {
 				if c.nType == catchAll && c.wildChild {

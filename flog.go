@@ -135,6 +135,7 @@ type LogRecord struct {
 	Fields      map[string]interface{}
 	Time        time.Time
 	EnableColor bool
+	Module      string // 模块名称，用于区分日志来源
 }
 
 // LoggerConfig 日志配置
@@ -278,6 +279,15 @@ func (al *AsyncLogger) processRecord(record LogRecord) {
 	levelText := al.colorManager.ApplyLevelColor(record.Level, record.EnableColor && al.enableColor)
 	buf.WriteString(levelText)
 	buf.WriteString("] ")
+
+	// 如果有模块名，则在日志中显示模块名
+	if record.Module != "" {
+		buf.WriteString("[")
+		moduleText := al.colorManager.ApplyColor(record.Module, ColorCyan, record.EnableColor && al.enableColor)
+		buf.WriteString(moduleText)
+		buf.WriteString("] ")
+	}
+
 	buf.WriteString(record.Message)
 
 	if len(record.Fields) > 0 {
@@ -333,6 +343,11 @@ func (al *AsyncLogger) isEnabled(level LogLevel) bool {
 
 // enqueue 添加日志记录到队列
 func (al *AsyncLogger) enqueue(level LogLevel, msg string, fields map[string]interface{}, enableColor bool) {
+	al.enqueueWithModule(level, msg, "", fields, enableColor)
+}
+
+// enqueueWithModule 添加带模块名的日志记录到队列
+func (al *AsyncLogger) enqueueWithModule(level LogLevel, msg, module string, fields map[string]interface{}, enableColor bool) {
 	if !al.isEnabled(level) || atomic.LoadInt32(&al.closed) == 1 {
 		return
 	}
@@ -343,6 +358,7 @@ func (al *AsyncLogger) enqueue(level LogLevel, msg string, fields map[string]int
 		Fields:      fields,
 		Time:        time.Now(),
 		EnableColor: enableColor,
+		Module:      module,
 	}
 
 	select {
@@ -385,6 +401,33 @@ func (al *AsyncLogger) Error(msg string, fields ...map[string]interface{}) {
 // Fatal 异步记录致命错误日志并退出
 func (al *AsyncLogger) Fatal(msg string, fields ...map[string]interface{}) {
 	al.enqueue(FATAL, msg, mergeFields(fields...), al.enableColor)
+	al.Flush()
+	os.Exit(1)
+}
+
+// DebugWithModule 异步记录带模块名的调试日志
+func (al *AsyncLogger) DebugWithModule(module, msg string, fields ...map[string]interface{}) {
+	al.enqueueWithModule(DEBUG, msg, module, mergeFields(fields...), al.enableColor)
+}
+
+// InfoWithModule 异步记录带模块名的信息日志
+func (al *AsyncLogger) InfoWithModule(module, msg string, fields ...map[string]interface{}) {
+	al.enqueueWithModule(INFO, msg, module, mergeFields(fields...), al.enableColor)
+}
+
+// WarningWithModule 异步记录带模块名的警告日志
+func (al *AsyncLogger) WarningWithModule(module, msg string, fields ...map[string]interface{}) {
+	al.enqueueWithModule(WARNING, msg, module, mergeFields(fields...), al.enableColor)
+}
+
+// ErrorWithModule 异步记录带模块名的错误日志
+func (al *AsyncLogger) ErrorWithModule(module, msg string, fields ...map[string]interface{}) {
+	al.enqueueWithModule(ERROR, msg, module, mergeFields(fields...), al.enableColor)
+}
+
+// FatalWithModule 异步记录带模块名的致命错误日志并退出
+func (al *AsyncLogger) FatalWithModule(module, msg string, fields ...map[string]interface{}) {
+	al.enqueueWithModule(FATAL, msg, module, mergeFields(fields...), al.enableColor)
 	al.Flush()
 	os.Exit(1)
 }
@@ -726,4 +769,185 @@ func ApplyColorToText(text, colorCode string) string {
 		return text
 	}
 	return colorCode + text + ColorReset
+}
+
+// SyncLogger 同步日志记录器
+type SyncLogger struct {
+	level        int32
+	output       io.Writer
+	timeCache    *timeCache
+	mutex        sync.Mutex
+	bufPool      sync.Pool
+	enableColor  bool
+	colorManager *colorManager
+}
+
+// NewSyncLogger 创建同步日志记录器
+func NewSyncLogger(level LogLevel) *SyncLogger {
+	config := defaultConfig
+	config.Level = level
+	return NewSyncLoggerWithConfig(config)
+}
+
+// NewSyncLoggerWithConfig 使用配置创建同步日志记录器
+func NewSyncLoggerWithConfig(config LoggerConfig) *SyncLogger {
+	if config.Output == nil {
+		config.Output = defaultConfig.Output
+	}
+
+	logger := &SyncLogger{
+		level:        int32(config.Level),
+		output:       config.Output,
+		timeCache:    newTimeCache(),
+		enableColor:  config.EnableColor,
+		colorManager: newColorManager(),
+		bufPool: sync.Pool{
+			New: func() interface{} {
+				return bytes.NewBuffer(make([]byte, 0, 1024))
+			},
+		},
+	}
+
+	return logger
+}
+
+// processRecord 同步处理单条日志记录
+func (sl *SyncLogger) processRecord(record LogRecord) {
+	sl.mutex.Lock()
+	defer sl.mutex.Unlock()
+
+	buf := sl.bufPool.Get().(*bytes.Buffer)
+	defer func() {
+		buf.Reset()
+		sl.bufPool.Put(buf)
+	}()
+
+	timestamp := record.Time.Format("2006-01-02 15:04:05")
+
+	buf.WriteString("[")
+	buf.WriteString(timestamp)
+	buf.WriteString("] [")
+
+	levelText := sl.colorManager.ApplyLevelColor(record.Level, record.EnableColor && sl.enableColor)
+	buf.WriteString(levelText)
+	buf.WriteString("] ")
+
+	// 如果有模块名，则在日志中显示模块名
+	if record.Module != "" {
+		buf.WriteString("[")
+		moduleText := sl.colorManager.ApplyColor(record.Module, ColorCyan, record.EnableColor && sl.enableColor)
+		buf.WriteString(moduleText)
+		buf.WriteString("] ")
+	}
+
+	buf.WriteString(record.Message)
+
+	if len(record.Fields) > 0 {
+		buf.WriteString(" |")
+		for k, v := range record.Fields {
+			buf.WriteString(" ")
+
+			keyText := sl.colorManager.ApplyColor(k, ColorBold, record.EnableColor && sl.enableColor)
+			buf.WriteString(keyText)
+			buf.WriteString("=")
+			buf.WriteString(formatValue(v))
+		}
+	}
+
+	buf.WriteString("\n")
+
+	_, err := sl.output.Write(buf.Bytes())
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "Failed to write log: %v\n", err)
+	}
+}
+
+// isEnabled 检查是否启用该日志级别
+func (sl *SyncLogger) isEnabled(level LogLevel) bool {
+	return level >= LogLevel(atomic.LoadInt32(&sl.level))
+}
+
+// enqueue 同步添加日志记录
+func (sl *SyncLogger) enqueue(level LogLevel, msg string, fields map[string]interface{}, enableColor bool) {
+	sl.enqueueWithModule(level, msg, "", fields, enableColor)
+}
+
+// enqueueWithModule 同步添加带模块名的日志记录
+func (sl *SyncLogger) enqueueWithModule(level LogLevel, msg, module string, fields map[string]interface{}, enableColor bool) {
+	if !sl.isEnabled(level) {
+		return
+	}
+
+	record := LogRecord{
+		Level:       level,
+		Message:     msg,
+		Fields:      fields,
+		Time:        time.Now(),
+		EnableColor: enableColor,
+		Module:      module,
+	}
+
+	sl.processRecord(record) // 直接同步处理
+}
+
+// SetLevel 设置日志级别
+func (sl *SyncLogger) SetLevel(level LogLevel) {
+	atomic.StoreInt32(&sl.level, int32(level))
+}
+
+// GetLevel 获取当前日志级别
+func (sl *SyncLogger) GetLevel() LogLevel {
+	return LogLevel(atomic.LoadInt32(&sl.level))
+}
+
+// Debug 记录调试日志
+func (sl *SyncLogger) Debug(msg string, fields ...map[string]interface{}) {
+	sl.enqueue(DEBUG, msg, mergeFields(fields...), sl.enableColor)
+}
+
+// Info 记录信息日志
+func (sl *SyncLogger) Info(msg string, fields ...map[string]interface{}) {
+	sl.enqueue(INFO, msg, mergeFields(fields...), sl.enableColor)
+}
+
+// Warning 记录警告日志
+func (sl *SyncLogger) Warning(msg string, fields ...map[string]interface{}) {
+	sl.enqueue(WARNING, msg, mergeFields(fields...), sl.enableColor)
+}
+
+// Error 记录错误日志
+func (sl *SyncLogger) Error(msg string, fields ...map[string]interface{}) {
+	sl.enqueue(ERROR, msg, mergeFields(fields...), sl.enableColor)
+}
+
+// Fatal 记录致命错误日志并退出
+func (sl *SyncLogger) Fatal(msg string, fields ...map[string]interface{}) {
+	sl.enqueue(FATAL, msg, mergeFields(fields...), sl.enableColor)
+	os.Exit(1)
+}
+
+// DebugWithModule 记录带模块名的调试日志
+func (sl *SyncLogger) DebugWithModule(module, msg string, fields ...map[string]interface{}) {
+	sl.enqueueWithModule(DEBUG, msg, module, mergeFields(fields...), sl.enableColor)
+}
+
+// InfoWithModule 记录带模块名的信息日志
+func (sl *SyncLogger) InfoWithModule(module, msg string, fields ...map[string]interface{}) {
+	sl.enqueueWithModule(INFO, msg, module, mergeFields(fields...), sl.enableColor)
+}
+
+// WarningWithModule 记录带模块名的警告日志
+func (sl *SyncLogger) WarningWithModule(module, msg string, fields ...map[string]interface{}) {
+	sl.enqueueWithModule(WARNING, msg, module, mergeFields(fields...), sl.enableColor)
+}
+
+// ErrorWithModule 记录带模块名的错误日志
+func (sl *SyncLogger) ErrorWithModule(module, msg string, fields ...map[string]interface{}) {
+	sl.enqueueWithModule(ERROR, msg, module, mergeFields(fields...), sl.enableColor)
+}
+
+// FatalWithModule 记录带模块名的致命错误日志并退出
+func (sl *SyncLogger) FatalWithModule(module, msg string, fields ...map[string]interface{}) {
+	sl.enqueueWithModule(FATAL, msg, module, mergeFields(fields...), sl.enableColor)
+	os.Exit(1)
 }
