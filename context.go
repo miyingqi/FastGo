@@ -508,6 +508,11 @@ func (c *Context) MultipartForm() (*multipart.Form, error) {
 	return c.Request.MultipartForm, nil
 }
 
+// Body 获取请求体内容
+func (c *Context) Body() ([]byte, error) {
+	return io.ReadAll(c.Request.Body)
+}
+
 // BindJSON 解析JSON请求体
 func (c *Context) BindJSON(obj interface{}) error {
 	body, err := io.ReadAll(c.Request.Body)
