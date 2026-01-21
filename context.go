@@ -1,7 +1,9 @@
 package FastGo
 
 import (
+	"context"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"log"
@@ -22,6 +24,10 @@ type Middleware interface {
 	HandleHTTP(*Context)
 }
 
+// ============================================================================
+// 参数处理相关类型定义
+// ============================================================================
+
 // Param 是单个URL参数的表示
 type Param struct {
 	Key   string
@@ -30,6 +36,10 @@ type Param struct {
 
 // Params 是URL参数列表
 type Params []Param
+
+// ============================================================================
+// 参数获取方法集
+// ============================================================================
 
 // ByName 根据参数名获取参数值
 func (ps Params) ByName(name string) string {
@@ -86,6 +96,10 @@ func (ps Params) ByNameDefault(name, defaultValue string) string {
 	return value
 }
 
+// ============================================================================
+// Context 结构定义
+// ============================================================================
+
 // Context 请求上下文
 type Context struct {
 	// 原始 HTTP 对象
@@ -129,6 +143,10 @@ type Context struct {
 	// 路由参数
 	Params Params
 }
+
+// ============================================================================
+// Context 构造和初始化方法
+// ============================================================================
 
 func NewContext(writer http.ResponseWriter, request *http.Request) *Context {
 	return &Context{
@@ -184,6 +202,48 @@ func (c *Context) Reset(writer http.ResponseWriter, request *http.Request) {
 	}
 	c.storeMutex.Unlock()
 }
+
+// ============================================================================
+// 日志相关方法
+// ============================================================================
+
+// Log 输出带requestID的日志
+func (c *Context) Log(level string, message string, args ...interface{}) {
+	logMessage := fmt.Sprintf(message, args...)
+	requestID := c.requestID
+	if requestID == "" {
+		requestID = "-"
+	}
+	clientIP := c.ClientIP()
+	if clientIP == "" {
+		clientIP = "-"
+	}
+	log.Printf("[%s] [%s] [%s] %s", level, requestID, clientIP, logMessage)
+}
+
+// LogInfo 输出INFO级别的日志
+func (c *Context) LogInfo(message string, args ...interface{}) {
+	c.Log("INFO", message, args...)
+}
+
+// LogWarn 输出WARN级别的日志
+func (c *Context) LogWarn(message string, args ...interface{}) {
+	c.Log("WARN", message, args...)
+}
+
+// LogError 输出ERROR级别的日志
+func (c *Context) LogError(message string, args ...interface{}) {
+	c.Log("ERROR", message, args...)
+}
+
+// LogDebug 输出DEBUG级别的日志
+func (c *Context) LogDebug(message string, args ...interface{}) {
+	c.Log("DEBUG", message, args...)
+}
+
+// ============================================================================
+// 响应处理相关方法
+// ============================================================================
 
 // SetHeader 设置响应头
 func (c *Context) SetHeader(key string, values ...string) {
@@ -257,6 +317,84 @@ func (c *Context) SendHtml(code int, html string) {
 	}
 }
 
+// SendXml 发送 XML 响应
+func (c *Context) SendXml(code int, xmlData interface{}) {
+	c.SetStatus(code)
+	c.SetHeader("Content-Type", "application/xml; charset=utf-8")
+
+	bytes, err := xml.Marshal(xmlData)
+	if err != nil {
+		c.SendString(http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+
+	// 添加XML声明
+	xmlResponse := []byte(xml.Header + string(bytes))
+	_, err = c.Write(xmlResponse)
+	if err != nil {
+		log.Printf("Error writing XML response: %v", err)
+	}
+}
+
+// JSONP 发送 JSONP 响应
+func (c *Context) JSONP(code int, callback string, data interface{}) {
+	c.SetStatus(code)
+	c.SetHeader("Content-Type", "application/javascript; charset=utf-8")
+
+	jsonBytes, err := json.Marshal(data)
+	if err != nil {
+		c.SendString(http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+
+	response := fmt.Sprintf("%s(%s)", callback, string(jsonBytes))
+	_, err = c.Write([]byte(response))
+	if err != nil {
+		log.Printf("Error writing JSONP response: %v", err)
+	}
+}
+
+// Data 发送原始数据
+func (c *Context) Data(code int, contentType string, data []byte) {
+	c.SetStatus(code)
+	c.SetHeader("Content-Type", contentType)
+	_, err := c.Write(data)
+	if err != nil {
+		log.Printf("Error writing raw data: %v", err)
+	}
+}
+
+// File 发送文件响应
+func (c *Context) File(filepath string) {
+	http.ServeFile(c.Writer, c.Request, filepath)
+}
+
+// SendSuccess 发送成功响应
+func (c *Context) SendSuccess(data interface{}) {
+	c.SendJson(http.StatusOK, FJ{
+		"success": true,
+		"data":    data,
+		"code":    http.StatusOK,
+	})
+}
+
+// SendError 发送错误响应
+func (c *Context) SendError(code int, message string, errData ...interface{}) {
+	response := FJ{
+		"success": false,
+		"message": message,
+		"code":    code,
+	}
+	if len(errData) > 0 {
+		response["data"] = errData[0]
+	}
+	c.SendJson(code, response)
+}
+
+// ============================================================================
+// 查询参数处理方法
+// ============================================================================
+
 // Query 获取查询参数
 func (c *Context) Query(key string) string {
 	return c.query.Get(key)
@@ -326,6 +464,41 @@ func (c *Context) DefaultQueryWithSlice(key string, defaultValue []string) []str
 	return values
 }
 
+// GetQueryInt64Default 获取64位整数类型的查询参数，如果不存在则返回默认值
+func (c *Context) GetQueryInt64Default(key string, defaultValue int64) int64 {
+	value := c.QueryInt64(key)
+	if value == 0 && c.Query(key) == "" {
+		return defaultValue
+	}
+	return value
+}
+
+// GetQueryFloat64Default 获取浮点数类型的查询参数，如果不存在则返回默认值
+func (c *Context) GetQueryFloat64Default(key string, defaultValue float64) float64 {
+	value := c.QueryFloat64(key)
+	if value == 0 && c.Query(key) == "" {
+		return defaultValue
+	}
+	return value
+}
+
+// GetQueryBoolDefault 获取布尔类型的查询参数，如果不存在则返回默认值
+func (c *Context) GetQueryBoolDefault(key string, defaultValue bool) bool {
+	queryValue := c.Query(key)
+	if queryValue == "" {
+		return defaultValue
+	}
+	value, err := strconv.ParseBool(queryValue)
+	if err != nil {
+		return defaultValue
+	}
+	return value
+}
+
+// ============================================================================
+// 请求头处理方法
+// ============================================================================
+
 // GetHeader 获取请求头
 func (c *Context) GetHeader(key string) string {
 	return c.Request.Header.Get(key)
@@ -336,47 +509,12 @@ func (c *Context) Host() string {
 	return c.Request.Host
 }
 
-// Path 获取请求路径
-func (c *Context) Path() string {
-	return c.Request.URL.Path
-}
-
 // Protocol 获取请求协议
 func (c *Context) Protocol() string {
 	if c.Request.TLS != nil {
 		return "https"
 	}
 	return "http"
-}
-
-// FullPath 获取完整路径（包含查询参数）
-func (c *Context) FullPath() string {
-	return c.Request.URL.RequestURI()
-}
-
-// RemoteIP 获取远程IP地址
-func (c *Context) RemoteIP() string {
-	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
-	if err != nil {
-		return c.Request.RemoteAddr
-	}
-	return host
-}
-
-// IsAjax 判断是否为AJAX请求
-func (c *Context) IsAjax() bool {
-	return c.GetHeader("X-Requested-With") == "XMLHttpRequest"
-}
-
-// IsJSON 判断请求内容类型是否为JSON
-func (c *Context) IsJSON() bool {
-	contentType := c.GetHeader("Content-Type")
-	return strings.Contains(contentType, "application/json")
-}
-
-// IsMethod 判断请求方法
-func (c *Context) IsMethod(method string) bool {
-	return strings.ToUpper(c.Request.Method) == strings.ToUpper(method)
 }
 
 // Referer 获取请求来源
@@ -414,6 +552,100 @@ func (c *Context) Authorization() string {
 	return c.GetHeader("Authorization")
 }
 
+// Range 获取Range头信息
+func (c *Context) Range() string {
+	return c.GetHeader("Range")
+}
+
+// XForwardedFor 获取X-Forwarded-For头信息
+func (c *Context) XForwardedFor() string {
+	return c.GetHeader("X-Forwarded-For")
+}
+
+// XRealIP 获取X-Real-IP头信息
+func (c *Context) XRealIP() string {
+	return c.GetHeader("X-Real-IP")
+}
+
+// XRequestedWith 获取X-Requested-With头信息
+func (c *Context) XRequestedWith() string {
+	return c.GetHeader("X-Requested-With")
+}
+
+// GetRangeHeader 获取Range请求头
+func (c *Context) GetRangeHeader() string {
+	return c.GetHeader("Range")
+}
+
+// GetAcceptRanges 检查是否接受范围请求
+func (c *Context) GetAcceptRanges() bool {
+	return c.GetHeader("Accept-Ranges") != ""
+}
+
+// GetAcceptEncoding 获取Accept-Encoding头信息
+func (c *Context) GetAcceptEncoding() string {
+	return c.GetHeader("Accept-Encoding")
+}
+
+// GetIfMatch 获取If-Match头信息
+func (c *Context) GetIfMatch() string {
+	return c.GetHeader("If-Match")
+}
+
+// GetIfNoneMatch 获取If-None-Match头信息
+func (c *Context) GetIfNoneMatch() string {
+	return c.GetHeader("If-None-Match")
+}
+
+// GetIfModifiedSince 获取If-Modified-Since头信息
+func (c *Context) GetIfModifiedSince() string {
+	return c.GetHeader("If-Modified-Since")
+}
+
+// GetIfUnmodifiedSince 获取If-Unmodified-Since头信息
+func (c *Context) GetIfUnmodifiedSince() string {
+	return c.GetHeader("If-Unmodified-Since")
+}
+
+// GetIfRange 获取If-Range头信息
+func (c *Context) GetIfRange() string {
+	return c.GetHeader("If-Range")
+}
+
+// GetConnection 获取Connection头信息
+func (c *Context) GetConnection() string {
+	return c.GetHeader("Connection")
+}
+
+// GetCacheControl 获取Cache-Control头信息
+func (c *Context) GetCacheControl() string {
+	return c.GetHeader("Cache-Control")
+}
+
+// GetPragma 获取Pragma头信息
+func (c *Context) GetPragma() string {
+	return c.GetHeader("Pragma")
+}
+
+// GetUpgrade 获取Upgrade头信息
+func (c *Context) GetUpgrade() string {
+	return c.GetHeader("Upgrade")
+}
+
+// GetTransferEncoding 获取Transfer-Encoding头信息
+func (c *Context) GetTransferEncoding() string {
+	return c.GetHeader("Transfer-Encoding")
+}
+
+// ============================================================================
+// HTTP 方法判断方法
+// ============================================================================
+
+// IsMethod 判断请求方法
+func (c *Context) IsMethod(method string) bool {
+	return strings.ToUpper(c.Request.Method) == strings.ToUpper(method)
+}
+
 // IsGet 判断是否为GET请求
 func (c *Context) IsGet() bool {
 	return c.IsMethod("GET")
@@ -449,36 +681,113 @@ func (c *Context) IsOptions() bool {
 	return c.IsMethod("OPTIONS")
 }
 
-// Range 获取Range头信息
-func (c *Context) Range() string {
-	return c.GetHeader("Range")
+// IsAjax 判断是否为AJAX请求
+func (c *Context) IsAjax() bool {
+	return c.GetHeader("X-Requested-With") == "XMLHttpRequest"
 }
 
-// AcceptRanges 检查是否接受范围请求
-func (c *Context) AcceptRanges() bool {
-	return c.GetHeader("Accept-Ranges") != ""
+// IsJSON 判断请求内容类型是否为JSON
+func (c *Context) IsJSON() bool {
+	contentType := c.GetHeader("Content-Type")
+	return strings.Contains(contentType, "application/json")
 }
 
-// ContentLength 获取内容长度
-func (c *Context) ContentLength() int64 {
-	length, _ := strconv.ParseInt(c.GetHeader("Content-Length"), 10, 64)
-	return length
+// IsWebSocket 检查是否为WebSocket请求
+func (c *Context) IsWebSocket() bool {
+	connection := strings.ToLower(c.GetConnection())
+	upgrade := strings.ToLower(c.GetUpgrade())
+	return strings.Contains(connection, "upgrade") && upgrade == "websocket"
 }
 
-// XForwardedFor 获取X-Forwarded-For头信息
-func (c *Context) XForwardedFor() string {
-	return c.GetHeader("X-Forwarded-For")
+// IsGzip 检查是否支持gzip压缩
+func (c *Context) IsGzip() bool {
+	acceptEncoding := c.GetAcceptEncoding()
+	return strings.Contains(strings.ToLower(acceptEncoding), "gzip")
 }
 
-// XRealIP 获取X-Real-IP头信息
-func (c *Context) XRealIP() string {
-	return c.GetHeader("X-Real-IP")
+// IsDeflate 检查是否支持deflate压缩
+func (c *Context) IsDeflate() bool {
+	acceptEncoding := c.GetAcceptEncoding()
+	return strings.Contains(strings.ToLower(acceptEncoding), "deflate")
 }
 
-// XRequestedWith 获取X-Requested-With头信息
-func (c *Context) XRequestedWith() string {
-	return c.GetHeader("X-Requested-With")
+// ============================================================================
+// 请求路径和URL处理方法
+// ============================================================================
+
+// Path 获取请求路径
+func (c *Context) Path() string {
+	return c.Request.URL.Path
 }
+
+// FullPath 获取完整路径（包含查询参数）
+func (c *Context) FullPath() string {
+	return c.Request.URL.RequestURI()
+}
+
+// RemoteIP 获取远程IP地址
+func (c *Context) RemoteIP() string {
+	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+	if err != nil {
+		return c.Request.RemoteAddr
+	}
+	return host
+}
+
+// ClientIP 获取客户端IP地址
+func (c *Context) ClientIP() string {
+	if c.clientIP != "" {
+		return c.clientIP
+	}
+
+	xForwardedFor := c.Request.Header.Get("X-Forwarded-For")
+	if xForwardedFor != "" {
+		ips := strings.Split(xForwardedFor, ",")
+		for _, ip := range ips {
+			ip = strings.TrimSpace(ip)
+			if ip != "" {
+				c.clientIP = ip
+				return ip
+			}
+		}
+	}
+
+	xRealIP := c.Request.Header.Get("X-Real-IP")
+	if xRealIP != "" {
+		c.clientIP = xRealIP
+		return xRealIP
+	}
+
+	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+	if err != nil {
+		if strings.Contains(c.Request.RemoteAddr, ":") {
+			host = strings.Split(c.Request.RemoteAddr, ":")[0]
+		} else {
+			host = c.Request.RemoteAddr
+		}
+	}
+
+	if host == "::1" {
+		host = "127.0.0.1"
+	}
+
+	c.clientIP = host
+	return host
+}
+
+// UserAgent 获取用户代理字符串
+func (c *Context) UserAgent() string {
+	if c.userAgent != "" {
+		return c.userAgent
+	}
+
+	c.userAgent = c.Request.UserAgent()
+	return c.userAgent
+}
+
+// ============================================================================
+// 表单和请求体处理方法
+// ============================================================================
 
 // PostForm 获取表单参数
 func (c *Context) PostForm(key string) string {
@@ -489,6 +798,55 @@ func (c *Context) PostForm(key string) string {
 func (c *Context) PostFormDefault(key, defaultValue string) string {
 	value := c.PostForm(key)
 	if value == "" {
+		return defaultValue
+	}
+	return value
+}
+
+// GetPostFormInt64 获取64位整数类型的表单参数
+func (c *Context) GetPostFormInt64(key string) int64 {
+	value, _ := strconv.ParseInt(c.PostForm(key), 10, 64)
+	return value
+}
+
+// GetPostFormFloat64 获取浮点数类型的表单参数
+func (c *Context) GetPostFormFloat64(key string) float64 {
+	value, _ := strconv.ParseFloat(c.PostForm(key), 64)
+	return value
+}
+
+// GetPostFormBool 获取布尔类型的表单参数
+func (c *Context) GetPostFormBool(key string) bool {
+	value, _ := strconv.ParseBool(c.PostForm(key))
+	return value
+}
+
+// GetPostFormInt64Default 获取64位整数类型的表单参数，如果不存在则返回默认值
+func (c *Context) GetPostFormInt64Default(key string, defaultValue int64) int64 {
+	value := c.GetPostFormInt64(key)
+	if value == 0 && c.PostForm(key) == "" {
+		return defaultValue
+	}
+	return value
+}
+
+// GetPostFormFloat64Default 获取浮点数类型的表单参数，如果不存在则返回默认值
+func (c *Context) GetPostFormFloat64Default(key string, defaultValue float64) float64 {
+	value := c.GetPostFormFloat64(key)
+	if value == 0 && c.PostForm(key) == "" {
+		return defaultValue
+	}
+	return value
+}
+
+// GetPostFormBoolDefault 获取布尔类型的表单参数，如果不存在则返回默认值
+func (c *Context) GetPostFormBoolDefault(key string, defaultValue bool) bool {
+	formValue := c.PostForm(key)
+	if formValue == "" {
+		return defaultValue
+	}
+	value, err := strconv.ParseBool(formValue)
+	if err != nil {
 		return defaultValue
 	}
 	return value
@@ -546,6 +904,35 @@ func (c *Context) ShouldBindJSON(obj interface{}) error {
 	}
 
 	return json.Unmarshal(body, obj)
+}
+
+// BindXML 绑定XML请求体
+func (c *Context) BindXML(obj interface{}) error {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		return err
+	}
+	return xml.Unmarshal(body, obj)
+}
+
+// ShouldBindXML 尝试绑定XML，失败时返回错误
+func (c *Context) ShouldBindXML(obj interface{}) error {
+	contentType := c.GetHeader("Content-Type")
+	if !strings.Contains(strings.ToLower(contentType), "application/xml") &&
+		!strings.Contains(strings.ToLower(contentType), "text/xml") {
+		return fmt.Errorf("content type is not application/xml or text/xml")
+	}
+
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		return err
+	}
+
+	if len(strings.TrimSpace(string(body))) == 0 {
+		return fmt.Errorf("request body is empty")
+	}
+
+	return xml.Unmarshal(body, obj)
 }
 
 // ShouldBindQuery 将查询参数绑定到结构体
@@ -633,56 +1020,9 @@ func setField(field reflect.Value, value string) {
 	}
 }
 
-// ClientIP 获取客户端IP地址
-func (c *Context) ClientIP() string {
-	if c.clientIP != "" {
-		return c.clientIP
-	}
-
-	xForwardedFor := c.Request.Header.Get("X-Forwarded-For")
-	if xForwardedFor != "" {
-		ips := strings.Split(xForwardedFor, ",")
-		for _, ip := range ips {
-			ip = strings.TrimSpace(ip)
-			if ip != "" {
-				c.clientIP = ip
-				return ip
-			}
-		}
-	}
-
-	xRealIP := c.Request.Header.Get("X-Real-IP")
-	if xRealIP != "" {
-		c.clientIP = xRealIP
-		return xRealIP
-	}
-
-	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
-	if err != nil {
-		if strings.Contains(c.Request.RemoteAddr, ":") {
-			host = strings.Split(c.Request.RemoteAddr, ":")[0]
-		} else {
-			host = c.Request.RemoteAddr
-		}
-	}
-
-	if host == "::1" {
-		host = "127.0.0.1"
-	}
-
-	c.clientIP = host
-	return host
-}
-
-// UserAgent 获取用户代理字符串
-func (c *Context) UserAgent() string {
-	if c.userAgent != "" {
-		return c.userAgent
-	}
-
-	c.userAgent = c.Request.UserAgent()
-	return c.userAgent
-}
+// ============================================================================
+// Cookie 处理方法
+// ============================================================================
 
 // Cookie 获取Cookie值
 func (c *Context) Cookie(name string) (string, error) {
@@ -707,6 +1047,65 @@ func (c *Context) SetCookie(name, value string, maxAge int, path, domain string,
 	http.SetCookie(c.Writer, cookie)
 }
 
+// HasCookie 检查是否存在指定Cookie
+func (c *Context) HasCookie(name string) bool {
+	_, err := c.Cookie(name)
+	return err == nil
+}
+
+// GetCookieInt 获取Cookie值并转换为整数
+func (c *Context) GetCookieInt(name string) int {
+	cookieVal, err := c.Cookie(name)
+	if err != nil {
+		return 0
+	}
+	value, _ := strconv.Atoi(cookieVal)
+	return value
+}
+
+// GetCookieInt64 获取Cookie值并转换为64位整数
+func (c *Context) GetCookieInt64(name string) int64 {
+	cookieVal, err := c.Cookie(name)
+	if err != nil {
+		return 0
+	}
+	value, _ := strconv.ParseInt(cookieVal, 10, 64)
+	return value
+}
+
+// GetCookieFloat64 获取Cookie值并转换为浮点数
+func (c *Context) GetCookieFloat64(name string) float64 {
+	cookieVal, err := c.Cookie(name)
+	if err != nil {
+		return 0.0
+	}
+	value, _ := strconv.ParseFloat(cookieVal, 64)
+	return value
+}
+
+// GetCookieBool 获取Cookie值并转换为布尔值
+func (c *Context) GetCookieBool(name string) bool {
+	cookieVal, err := c.Cookie(name)
+	if err != nil {
+		return false
+	}
+	value, _ := strconv.ParseBool(cookieVal)
+	return value
+}
+
+// GetCookieDefault 获取Cookie值，如果不存在则返回默认值
+func (c *Context) GetCookieDefault(name, defaultValue string) string {
+	cookieVal, err := c.Cookie(name)
+	if err != nil {
+		return defaultValue
+	}
+	return cookieVal
+}
+
+// ============================================================================
+// 重定向和错误处理方法
+// ============================================================================
+
 // Redirect 重定向
 func (c *Context) Redirect(code int, location string) {
 	c.SetStatus(code)
@@ -715,20 +1114,90 @@ func (c *Context) Redirect(code int, location string) {
 	_, _ = c.Writer.Write([]byte("Redirecting to: " + location))
 }
 
-// Data 发送原始数据
-func (c *Context) Data(code int, contentType string, data []byte) {
-	c.SetStatus(code)
-	c.SetHeader("Content-Type", contentType)
-	_, err := c.Write(data)
+// HTTPNotFound 处理 404 错误
+func HTTPNotFound(c *Context) {
+	c.SetStatus(http.StatusNotFound)
+	c.SetHeader("Content-Type", "text/plain; charset=utf-8")
+	_, err := c.Write([]byte("404 Not Found"))
 	if err != nil {
-		log.Printf("Error writing raw data: %v", err)
+		log.Printf("Error writing 404 response: %v", err)
 	}
+	c.Abort()
 }
 
-// File 发送文件响应
-func (c *Context) File(filepath string) {
-	http.ServeFile(c.Writer, c.Request, filepath)
+// Status 设置响应状态码并返回Context以支持链式调用
+func (c *Context) Status(code int) *Context {
+	c.SetStatus(code)
+	return c
 }
+
+// NotFound 返回404错误
+func (c *Context) NotFound(message string) {
+	if message == "" {
+		message = "Not Found"
+	}
+	c.Fail(http.StatusNotFound, message)
+}
+
+// BadRequest 返回400错误
+func (c *Context) BadRequest(message string) {
+	if message == "" {
+		message = "Bad Request"
+	}
+	c.Fail(http.StatusBadRequest, message)
+}
+
+// Unauthorized 返回401错误
+func (c *Context) Unauthorized(message string) {
+	if message == "" {
+		message = "Unauthorized"
+	}
+	c.Fail(http.StatusUnauthorized, message)
+}
+
+// Forbidden 返回403错误
+func (c *Context) Forbidden(message string) {
+	if message == "" {
+		message = "Forbidden"
+	}
+	c.Fail(http.StatusForbidden, message)
+}
+
+// InternalServerError 返回500错误
+func (c *Context) InternalServerError(message string) {
+	if message == "" {
+		message = "Internal Server Error"
+	}
+	c.Fail(http.StatusInternalServerError, message)
+}
+
+// Fail 执行失败操作，设置状态码并终止请求
+func (c *Context) Fail(code int, errorMsg string) {
+	c.SetStatus(code)
+	c.SetHeader("Content-Type", "application/json; charset=utf-8")
+	c.SendJson(code, FJ{
+		"error":   true,
+		"message": errorMsg,
+		"status":  code,
+	})
+	c.Abort()
+}
+
+// FailWithError 执行失败操作，使用错误对象
+func (c *Context) FailWithError(code int, err error) {
+	c.SetStatus(code)
+	c.SetHeader("Content-Type", "application/json; charset=utf-8")
+	c.SendJson(code, FJ{
+		"error":   true,
+		"message": err.Error(),
+		"status":  code,
+	})
+	c.Abort()
+}
+
+// ============================================================================
+// 请求生命周期管理方法
+// ============================================================================
 
 // Next 执行下一个中间件/处理器
 func (c *Context) Next() {
@@ -747,21 +1216,44 @@ func (c *Context) Abort() {
 	c.aborted = true
 }
 
+// IsAborted 检查是否已被中止
+func (c *Context) IsAborted() bool {
+	return c.aborted
+}
+
 // SetHandles 设置中间件链
 func (c *Context) SetHandles(middleware []Middleware) {
 	c.handlers = middlewaresToHandlerFuncs(middleware)
 }
 
-// HTTPNotFound 处理 404 错误
-func HTTPNotFound(c *Context) {
-	c.SetStatus(http.StatusNotFound)
-	c.SetHeader("Content-Type", "text/plain; charset=utf-8")
-	_, err := c.Write([]byte("404 Not Found"))
+// Error 添加错误到错误列表
+func (c *Context) Error(err error) {
 	if err != nil {
-		log.Printf("Error writing 404 response: %v", err)
+		c.errors = append(c.errors, err)
 	}
-	c.Abort()
 }
+
+// Errors 获取所有错误
+func (c *Context) Errors() []error {
+	return c.errors
+}
+
+// HasErrors 检查是否有错误
+func (c *Context) HasErrors() bool {
+	return len(c.errors) > 0
+}
+
+// GetError 获取第一个错误
+func (c *Context) GetError() error {
+	if len(c.errors) > 0 {
+		return c.errors[0]
+	}
+	return nil
+}
+
+// ============================================================================
+// 数据存储方法
+// ============================================================================
 
 // Get 获取存储的数据
 func (c *Context) Get(key interface{}) (value interface{}, exists bool) {
@@ -826,99 +1318,231 @@ func (c *Context) GetBool(key interface{}) (b bool) {
 	return
 }
 
-// IsAborted 检查是否已被中止
-func (c *Context) IsAborted() bool {
-	return c.aborted
+// ============================================================================
+// 路径参数处理方法
+// ============================================================================
+
+// GetPathParam 获取路径参数
+func (c *Context) GetPathParam(key string) string {
+	return c.Params.ByName(key)
 }
 
-// Error 添加错误到错误列表
-func (c *Context) Error(err error) {
-	if err != nil {
-		c.errors = append(c.errors, err)
+// GetPathParamInt 获取路径参数并转换为整数
+func (c *Context) GetPathParamInt(key string) int {
+	return c.Params.ByNameInt(key)
+}
+
+// GetPathParamInt64 获取路径参数并转换为64位整数
+func (c *Context) GetPathParamInt64(key string) int64 {
+	return c.Params.ByNameInt64(key)
+}
+
+// GetPathParamUint 获取路径参数并转换为无符号整数
+func (c *Context) GetPathParamUint(key string) uint {
+	return c.Params.ByNameUint(key)
+}
+
+// GetPathParamUint64 获取路径参数并转换为64位无符号整数
+func (c *Context) GetPathParamUint64(key string) uint64 {
+	return c.Params.ByNameUint64(key)
+}
+
+// GetPathParamFloat64 获取路径参数并转换为浮点数
+func (c *Context) GetPathParamFloat64(key string) float64 {
+	return c.Params.ByNameFloat64(key)
+}
+
+// GetPathParamBool 获取路径参数并转换为布尔值
+func (c *Context) GetPathParamBool(key string) bool {
+	return c.Params.ByNameBool(key)
+}
+
+// GetPathParamDefault 获取路径参数，如果不存在则返回默认值
+func (c *Context) GetPathParamDefault(key, defaultValue string) string {
+	return c.Params.ByNameDefault(key, defaultValue)
+}
+
+// ============================================================================
+// 通用头部和内容长度处理方法
+// ============================================================================
+
+// ContentLength 获取内容长度
+func (c *Context) ContentLength() int64 {
+	length, _ := strconv.ParseInt(c.GetHeader("Content-Length"), 10, 64)
+	return length
+}
+
+// GetContentLength 获取内容长度
+func (c *Context) GetContentLength() int64 {
+	cl := c.GetHeader("Content-Length")
+	if cl == "" {
+		return 0
 	}
+	n, err := strconv.ParseInt(cl, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
-// Errors 获取所有错误
-func (c *Context) Errors() []error {
-	return c.errors
+// ContainsFileHeader 检查请求是否包含文件上传
+func (c *Context) ContainsFileHeader(filename string) bool {
+	_, fh, err := c.Request.FormFile(filename)
+	if err != nil {
+		return false
+	}
+	return fh != nil
 }
 
-// HasErrors 检查是否有错误
-func (c *Context) HasErrors() bool {
-	return len(c.errors) > 0
+// ============================================================================
+// 上下文接口实现
+// ============================================================================
+
+// Deadline 返回请求的截止时间
+func (c *Context) Deadline() (deadline time.Time, ok bool) {
+	if c.Request.Context() != nil {
+		return c.Request.Context().Deadline()
+	}
+	return
 }
 
-// GetError 获取第一个错误
-func (c *Context) GetError() error {
-	if len(c.errors) > 0 {
-		return c.errors[0]
+// Done 返回当请求结束或取消时关闭的通道
+func (c *Context) Done() <-chan struct{} {
+	if c.Request.Context() != nil {
+		return c.Request.Context().Done()
 	}
 	return nil
 }
 
-// Fail 执行失败操作，设置状态码并终止请求
-func (c *Context) Fail(code int, errorMsg string) {
-	c.SetStatus(code)
-	c.SetHeader("Content-Type", "application/json; charset=utf-8")
-	c.SendJson(code, FJ{
-		"error":   true,
-		"message": errorMsg,
-		"status":  code,
-	})
-	c.Abort()
-}
-
-// FailWithError 执行失败操作，使用错误对象
-func (c *Context) FailWithError(code int, err error) {
-	c.SetStatus(code)
-	c.SetHeader("Content-Type", "application/json; charset=utf-8")
-	c.SendJson(code, FJ{
-		"error":   true,
-		"message": err.Error(),
-		"status":  code,
-	})
-	c.Abort()
-}
-
-// NotFound 返回404错误
-func (c *Context) NotFound(message string) {
-	if message == "" {
-		message = "Not Found"
+// Err 返回请求上下文的错误原因
+func (c *Context) Err() error {
+	if c.Request.Context() != nil {
+		return c.Request.Context().Err()
 	}
-	c.Fail(http.StatusNotFound, message)
+	return nil
 }
 
-// BadRequest 返回400错误
-func (c *Context) BadRequest(message string) {
-	if message == "" {
-		message = "Bad Request"
+// Value 返回与键关联的值
+func (c *Context) Value(key interface{}) interface{} {
+	if c.Request.Context() != nil {
+		return c.Request.Context().Value(key)
 	}
-	c.Fail(http.StatusBadRequest, message)
+	return nil
 }
 
-// Unauthorized 返回401错误
-func (c *Context) Unauthorized(message string) {
-	if message == "" {
-		message = "Unauthorized"
+// ============================================================================
+// 辅助和工具方法
+// ============================================================================
+
+// Copy 创建Context副本
+func (c *Context) Copy() *Context {
+	cp := &Context{
+		Request:   c.Request,
+		Writer:    c.Writer,
+		method:    c.method,
+		path:      c.path,
+		params:    make(map[string]string),
+		query:     make(url.Values),
+		clientIP:  c.clientIP,
+		userAgent: c.userAgent,
+
+		statusCode: c.statusCode,
+		headers:    make(map[string]string),
+
+		store:     make(map[interface{}]interface{}),
+		handlers:  c.handlers,
+		index:     c.index,
+		errors:    make([]error, len(c.errors)),
+		aborted:   c.aborted,
+		startTime: c.startTime,
+		requestID: c.requestID,
+		written:   c.written,
+		Params:    make(Params, len(c.Params)),
 	}
-	c.Fail(http.StatusUnauthorized, message)
+
+	// 复制参数映射
+	for k, v := range c.params {
+		cp.params[k] = v
+	}
+
+	// 复制查询参数
+	for k, v := range c.query {
+		cp.query[k] = v
+	}
+
+	// 复制头信息
+	for k, v := range c.headers {
+		cp.headers[k] = v
+	}
+
+	// 复制错误列表
+	copy(cp.errors, c.errors)
+
+	// 复制存储数据
+	c.storeMutex.RLock()
+	for k, v := range c.store {
+		cp.store[k] = v
+	}
+	c.storeMutex.RUnlock()
+
+	// 复制路径参数
+	copy(cp.Params, c.Params)
+
+	return cp
 }
 
-// Forbidden 返回403错误
-func (c *Context) Forbidden(message string) {
-	if message == "" {
-		message = "Forbidden"
-	}
-	c.Fail(http.StatusForbidden, message)
+// Flash 用于存储临时消息
+type Flash struct {
+	Data map[string][]string
 }
 
-// InternalServerError 返回500错误
-func (c *Context) InternalServerError(message string) {
-	if message == "" {
-		message = "Internal Server Error"
+// NewFlash 创建一个新的Flash实例
+func NewFlash() *Flash {
+	return &Flash{
+		Data: make(map[string][]string),
 	}
-	c.Fail(http.StatusInternalServerError, message)
 }
+
+// SetFlash 设置flash消息
+func (c *Context) SetFlash(key, value string) {
+	flashInterface, exists := c.Get("flash")
+	if !exists {
+		flash := NewFlash()
+		flash.Data[key] = []string{value}
+		c.Set("flash", flash)
+	} else {
+		flash, ok := flashInterface.(*Flash)
+		if ok {
+			flash.Data[key] = append(flash.Data[key], value)
+		} else {
+			flash := NewFlash()
+			flash.Data[key] = []string{value}
+			c.Set("flash", flash)
+		}
+	}
+}
+
+// GetFlash 获取flash消息
+func (c *Context) GetFlash(key string) []string {
+	flashInterface, exists := c.Get("flash")
+	if !exists {
+		return []string{}
+	}
+	flash, ok := flashInterface.(*Flash)
+	if !ok {
+		return []string{}
+	}
+	if values, ok := flash.Data[key]; ok {
+		// 移除flash消息，使其只在下次请求前有效
+		delete(flash.Data, key)
+		return values
+	}
+	return []string{}
+}
+
+// ============================================================================
+// 工具函数
+// ============================================================================
 
 // 将 Middleware 接口转换为 HandlerFunc
 func middlewareToHandlerFunc(mw Middleware) HandlerFunc {
@@ -938,4 +1562,149 @@ func middlewaresToHandlerFuncs(middlewares []Middleware) []HandlerFunc {
 		handlers[i] = middlewareToHandlerFunc(mw)
 	}
 	return handlers
+}
+func (c *Context) ServeRange(ctx context.Context, reader RangeReader) {
+	// 1. 基础校验
+	if reader == nil {
+		c.InternalServerError("range reader is nil")
+		return
+	}
+	fileSize := reader.Size()
+	if fileSize <= 0 {
+		c.BadRequest("invalid data size")
+		return
+	}
+
+	// 2. 设置通用响应头
+	c.SetHeader("Accept-Ranges", "bytes")                                                         // 声明支持断点续传
+	c.SetHeader("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", reader.Name())) // 下载文件名
+	c.SetHeader("Content-Type", reader.ContentType())                                             // 数据MIME类型
+
+	// 3. 解析Range请求头
+	rangeHeader := c.GetRangeHeader()
+	specs, isRangeRequest, err := ParseRange(rangeHeader, fileSize)
+	if err != nil {
+		// Range格式错误，返回416
+		c.SetHeader("Content-Range", fmt.Sprintf("bytes */%d", fileSize))
+		c.Fail(http.StatusRequestedRangeNotSatisfiable, fmt.Sprintf("invalid range: %v", err))
+		return
+	}
+
+	// 4. 处理非Range请求（返回完整数据）
+	if !isRangeRequest {
+		c.SetStatus(http.StatusOK)
+		c.SetHeader("Content-Length", strconv.FormatInt(fileSize, 10))
+
+		// 读取完整数据
+		fullReader, _, err := reader.ReadRange(ctx, 0, fileSize-1)
+		if err != nil {
+			c.InternalServerError(fmt.Sprintf("read full data failed: %v", err))
+			return
+		}
+		io.Copy(c.Writer, fullReader)
+		return
+	}
+
+	// 5. 处理Range请求（返回部分数据，206状态码）
+	spec := specs[0] // 主流场景仅处理单个范围
+	c.SetStatus(http.StatusPartialContent)
+
+	// 设置断点续传核心响应头
+	c.SetHeader("Content-Range", fmt.Sprintf("bytes %d-%d/%d", spec.Start, spec.End, fileSize))
+	c.SetHeader("Content-Length", strconv.FormatInt(spec.Length, 10))
+
+	// 读取指定范围数据并写入响应
+	rangeDataReader, _, err := reader.ReadRange(ctx, spec.Start, spec.End)
+	if err != nil {
+		c.InternalServerError(fmt.Sprintf("read range data failed: %v", err))
+		return
+	}
+	io.Copy(c.Writer, rangeDataReader)
+}
+
+// -------------------------- 通用Range解析工具（复用并优化） --------------------------
+// RangeSpec 表示解析后的Range范围
+type RangeSpec struct {
+	Start  int64 // 起始字节
+	End    int64 // 结束字节（包含）
+	Length int64 // 片段长度
+}
+
+// ParseRange 通用Range头解析方法（适配所有场景）
+// rangeHeader: Range请求头值（如bytes=0-1024）
+// totalSize: 数据总大小
+// 返回：解析后的范围列表、是否是Range请求、错误
+func ParseRange(rangeHeader string, totalSize int64) ([]RangeSpec, bool, error) {
+	if rangeHeader == "" {
+		return nil, false, nil
+	}
+
+	// 仅支持bytes类型的Range
+	if !strings.HasPrefix(strings.ToLower(rangeHeader), "bytes=") {
+		return nil, false, fmt.Errorf("unsupported range type (only bytes is supported): %s", rangeHeader)
+	}
+
+	// 拆分多个范围（如bytes=0-1024,2048-3072）
+	parts := strings.Split(strings.TrimPrefix(rangeHeader, "bytes="), ",")
+	specs := make([]RangeSpec, 0, len(parts))
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		// 拆分起始和结束位置
+		sepIdx := strings.Index(part, "-")
+		if sepIdx == -1 {
+			return nil, false, fmt.Errorf("invalid range format: %s", part)
+		}
+
+		startStr, endStr := part[:sepIdx], part[sepIdx+1:]
+		var start, end int64 = -1, -1
+		var err error
+
+		// 解析起始位置
+		if startStr != "" {
+			start, err = strconv.ParseInt(startStr, 10, 64)
+			if err != nil || start < 0 {
+				return nil, false, fmt.Errorf("invalid start position: %s", startStr)
+			}
+		}
+
+		// 解析结束位置
+		if endStr != "" {
+			end, err = strconv.ParseInt(endStr, 10, 64)
+			if err != nil || end < 0 {
+				return nil, false, fmt.Errorf("invalid end position: %s", endStr)
+			}
+		}
+
+		// 处理特殊Range格式
+		switch {
+		// 1. 从末尾开始的范围（如bytes=-512 → 最后512字节）
+		case start == -1 && end != -1:
+			start = totalSize - end
+			end = totalSize - 1
+		// 2. 从指定位置到末尾（如bytes=1024- → 1024到末尾）
+		case start != -1 && end == -1:
+			end = totalSize - 1
+		// 3. 无效格式
+		case start == -1 && end == -1:
+			return nil, false, fmt.Errorf("empty range: %s", part)
+		}
+
+		// 校验范围有效性
+		if start > end || start >= totalSize || end >= totalSize {
+			return nil, false, fmt.Errorf("range out of bounds: %s (total size: %d)", part, totalSize)
+		}
+
+		specs = append(specs, RangeSpec{
+			Start:  start,
+			End:    end,
+			Length: end - start + 1,
+		})
+	}
+
+	return specs, len(specs) > 0, nil
 }

@@ -11,9 +11,9 @@ func (m *MiddlewareLog) HandleHTTP(context *Context) {
 	if context.Request.TLS != nil {
 		protocol = "HTTPS"
 	}
-	m.defaultLoggerMid.InfoWithModule(protocol, context.clientIP+"-"+context.method+" ")
+	m.defaultLoggerMid.InfoWithModule(protocol, context.ClientIP()+"-"+context.method+" ")
 	context.Next()
-	m.defaultLoggerMid.InfoWithModule(protocol, context.clientIP+"-"+context.method+" "+strconv.Itoa(context.statusCode)+" "+context.StatusString(context.statusCode))
+	m.defaultLoggerMid.InfoWithModule(protocol, context.ClientIP()+"-"+context.method+" "+strconv.Itoa(context.statusCode)+" "+context.StatusString(context.statusCode))
 }
 
 func NewMiddlewareLog() *MiddlewareLog {

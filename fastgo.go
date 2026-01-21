@@ -73,12 +73,6 @@ func (h *App) Use(middlewares ...Middleware) {
 	h.middlewares = append(h.middlewares, middlewares...)
 }
 
-// AddMiddleware 添加中间件到应用（与 Use 方法功能相同，提供另一种方式）
-// 现在作为别名，指向 Use 方法
-func (h *App) AddMiddleware(middlewares ...Middleware) {
-	h.Use(middlewares...)
-}
-
 // Run 启动服务器并支持优雅关机
 func (h *App) Run() error {
 	h.server.Handler = h

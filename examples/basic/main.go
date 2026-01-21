@@ -135,18 +135,6 @@ func main() {
 		}
 	}
 
-	fmt.Println("服务器启动在 :8080 端口")
-	fmt.Println("嵌套分组示例:")
-	fmt.Println("  GET  /api/v2/users/list")
-	fmt.Println("  POST /api/v2/users/create")
-	fmt.Println("  GET  /api/v2/users/admin/permissions")
-	fmt.Println("  POST /api/v2/users/admin/roles")
-	fmt.Println("  GET  /api/v2/products/list")
-	fmt.Println("  POST /api/v2/products/create")
-	fmt.Println("  GET  /user/dashboard/settings")
-	fmt.Println("  GET  /user/dashboard/settings/profile")
-	fmt.Println("  PUT  /user/dashboard/settings/profile")
-
 	if err := app.Run(); err != nil {
 		fmt.Printf("Server error: %v\n", err)
 	}
