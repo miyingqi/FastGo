@@ -1,23 +1,16 @@
 package FastGo
 
 import (
-	"context"
-	"errors"
-	"fmt"
 	"net/http"
-	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 	"time"
 )
 
 type App struct {
-	server      *http.Server
+	server      *app
 	router      *Router
-	middlewares []Middleware
+	middlewares []HandlerStruct
 	logger      *SyncLogger
-	contextPool sync.Pool // 上下文池
 }
 
 // Router 返回路由器实例
@@ -40,83 +33,85 @@ func (h *App) AddRouter(router *Router) {
 	h.router.MergeRouter(router)
 }
 
-func NewFastGo(addr string) *App {
+func NewFastGo() *App {
 	router := NewRouter()
-
-	middlewares := make([]Middleware, 0)
+	middlewares := make([]HandlerStruct, 0)
 	middlewares = append(middlewares, NewMiddlewareLog())
-	middlewares = append(middlewares, router)
-
 	app := &App{
+		server:      newServer(),
+		router:      router,
+		middlewares: middlewares,
+		logger:      NewSyncLogger(INFO),
+	}
+	return app
+}
+func (h *App) Run(addr string) error {
+
+	h.server.handlersChain = append(h.server.handlersChain, midToHandler(h.middlewares)...)
+	h.server.handlersChain = append(h.server.handlersChain, h.router.HandleHTTP)
+	return h.server.ListenAndServe(addr)
+}
+
+// Use 添加中间件到应用
+func (h *App) Use(middlewares ...HandlerStruct) {
+	h.middlewares = append(h.middlewares, middlewares...)
+}
+
+// Run 启动服务器并支持优雅关机
+
+func (h *App) gracefulShutdown() {
+
+}
+
+type app struct {
+	server        *http.Server
+	handlersChain []HandlerFunc
+	contextPool   sync.Pool // 上下文池
+}
+
+func newServer() *app {
+	return &app{
 		server: &http.Server{
-			Addr:           addr,
 			Handler:        nil,
 			ReadTimeout:    10 * time.Second,
 			WriteTimeout:   10 * time.Second,
 			IdleTimeout:    30 * time.Second,
 			MaxHeaderBytes: 1 << 20, // 1MB
 		},
-		router:      router,
-		middlewares: middlewares,
-		logger:      NewSyncLogger(INFO),
+		handlersChain: nil,
+		contextPool: sync.Pool{
+			New: func() interface{} {
+				return NewContext(nil, nil)
+			},
+		},
 	}
 
-	app.contextPool.New = func() interface{} {
-		return NewContext(nil, nil)
-	}
-
-	return app
 }
 
-// Use 添加中间件到应用
-func (h *App) Use(middlewares ...Middleware) {
-	h.middlewares = append(h.middlewares, middlewares...)
+func (s *app) ListenAndServe(addr string) error {
+	s.server.Addr = addr
+	s.server.Handler = s
+	return s.server.ListenAndServe()
 }
-
-// Run 启动服务器并支持优雅关机
-func (h *App) Run() error {
-	h.server.Handler = h
-	h.logger.InfoWithModule("APP", "Starting FastGo: "+h.server.Addr)
-	go func() {
-		if err := h.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			h.logger.ErrorWithModule("APP", fmt.Sprintf("Server error: %v", err))
-		}
-	}()
-
-	return h.gracefulShutdown()
-}
-
-func (h *App) gracefulShutdown() error {
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
-	_ = <-quit
-	h.logger.InfoWithModule("APP", "FastGo is shutting down...")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	h.logger.InfoWithModule("APP", "Shutting down server...")
-	if err := h.server.Shutdown(ctx); err != nil {
-		h.logger.ErrorWithModule("APP", fmt.Sprintf("Server shutdown error: %v", err))
-		return err
-	}
-
-	h.logger.InfoWithModule("APP", "Server stopped gracefully")
-	fmt.Println("服务器已优雅退出")
-	return nil
-}
-
-func (h *App) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	ctx, ok := h.contextPool.Get().(*Context)
+func (s *app) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	ctx, ok := s.contextPool.Get().(*Context)
 	if !ok {
 		ctx = NewContext(writer, request)
 	} else {
 		ctx.Reset(writer, request)
 	}
 
-	ctx.SetHandles(h.middlewares)
+	ctx.SetHandles(s.handlersChain)
 
 	ctx.Next()
 
-	h.contextPool.Put(ctx)
+	s.contextPool.Put(ctx)
+}
+
+func midToHandler(middlewares []HandlerStruct) []HandlerFunc {
+	handlers := make([]HandlerFunc, 0)
+	for _, middleware := range middlewares {
+		handlers = append(handlers, middleware.HandleHTTP)
+	}
+	return handlers
 }

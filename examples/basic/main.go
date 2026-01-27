@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	app := FastGo.NewFastGo(":8080")
+	app := FastGo.NewFastGo()
 
 	// 创建独立的路由器
 	userRouter := FastGo.NewRouter()
@@ -135,7 +135,7 @@ func main() {
 		}
 	}
 
-	if err := app.Run(); err != nil {
+	if err := app.Run(":8080"); err != nil {
 		fmt.Printf("Server error: %v\n", err)
 	}
 }

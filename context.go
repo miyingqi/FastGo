@@ -20,8 +20,12 @@ import (
 
 type FJ map[string]interface{}
 type HandlerFunc func(*Context)
-type Middleware interface {
+type HandlerStruct interface {
 	HandleHTTP(*Context)
+}
+
+func (h HandlerFunc) HandleHTTP(c *Context) {
+	h(c)
 }
 
 // ============================================================================
@@ -1222,8 +1226,8 @@ func (c *Context) IsAborted() bool {
 }
 
 // SetHandles 设置中间件链
-func (c *Context) SetHandles(middleware []Middleware) {
-	c.handlers = middlewaresToHandlerFuncs(middleware)
+func (c *Context) SetHandles(handlers []HandlerFunc) {
+	c.handlers = handlers
 }
 
 // Error 添加错误到错误列表
@@ -1544,25 +1548,6 @@ func (c *Context) GetFlash(key string) []string {
 // 工具函数
 // ============================================================================
 
-// 将 Middleware 接口转换为 HandlerFunc
-func middlewareToHandlerFunc(mw Middleware) HandlerFunc {
-	return func(c *Context) {
-		mw.HandleHTTP(c)
-	}
-}
-
-// 批量转换接口切片为 HandlerFunc 切片
-func middlewaresToHandlerFuncs(middlewares []Middleware) []HandlerFunc {
-	if len(middlewares) == 0 {
-		return nil
-	}
-
-	handlers := make([]HandlerFunc, len(middlewares))
-	for i, mw := range middlewares {
-		handlers[i] = middlewareToHandlerFunc(mw)
-	}
-	return handlers
-}
 func (c *Context) ServeRange(ctx context.Context, reader RangeReader) {
 	// 1. 基础校验
 	if reader == nil {
