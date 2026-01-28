@@ -107,8 +107,8 @@ func (ps Params) ByNameDefault(name, defaultValue string) string {
 // Context 请求上下文
 type Context struct {
 	// 原始 HTTP 对象
-	Request *http.Request
-	Writer  http.ResponseWriter
+	request *http.Request
+	writer  http.ResponseWriter
 
 	// 请求信息
 	method    string
@@ -121,7 +121,7 @@ type Context struct {
 	// 响应信息
 	statusCode int
 	// 注意：headers map 主要是为了方便框架内部逻辑，
-	// 真正的响应头必须写入 c.Writer.Header()
+	// 真正的响应头必须写入 c.writer.Header()
 	headers map[string]string
 
 	// 数据存储
@@ -154,8 +154,8 @@ type Context struct {
 
 func NewContext(writer http.ResponseWriter, request *http.Request) *Context {
 	return &Context{
-		Request:   request,
-		Writer:    writer,
+		request:   request,
+		writer:    writer,
 		method:    "",
 		path:      "",
 		params:    make(map[string]string),
@@ -175,8 +175,8 @@ func NewContext(writer http.ResponseWriter, request *http.Request) *Context {
 
 // Reset 重置上下文以供复用
 func (c *Context) Reset(writer http.ResponseWriter, request *http.Request) {
-	c.Request = request
-	c.Writer = writer
+	c.request = request
+	c.writer = writer
 	c.method = request.Method
 	c.path = request.URL.Path
 	c.requestID = request.Header.Get("X-Request-Id")
@@ -211,40 +211,6 @@ func (c *Context) Reset(writer http.ResponseWriter, request *http.Request) {
 // 日志相关方法
 // ============================================================================
 
-// Log 输出带requestID的日志
-func (c *Context) Log(level string, message string, args ...interface{}) {
-	logMessage := fmt.Sprintf(message, args...)
-	requestID := c.requestID
-	if requestID == "" {
-		requestID = "-"
-	}
-	clientIP := c.ClientIP()
-	if clientIP == "" {
-		clientIP = "-"
-	}
-	log.Printf("[%s] [%s] [%s] %s", level, requestID, clientIP, logMessage)
-}
-
-// LogInfo 输出INFO级别的日志
-func (c *Context) LogInfo(message string, args ...interface{}) {
-	c.Log("INFO", message, args...)
-}
-
-// LogWarn 输出WARN级别的日志
-func (c *Context) LogWarn(message string, args ...interface{}) {
-	c.Log("WARN", message, args...)
-}
-
-// LogError 输出ERROR级别的日志
-func (c *Context) LogError(message string, args ...interface{}) {
-	c.Log("ERROR", message, args...)
-}
-
-// LogDebug 输出DEBUG级别的日志
-func (c *Context) LogDebug(message string, args ...interface{}) {
-	c.Log("DEBUG", message, args...)
-}
-
 // ============================================================================
 // 响应处理相关方法
 // ============================================================================
@@ -262,7 +228,7 @@ func (c *Context) SetHeader(key string, values ...string) {
 		value += v
 	}
 	c.headers[key] = value
-	c.Writer.Header().Set(key, value)
+	c.writer.Header().Set(key, value)
 }
 
 // StatusString 获取状态码文本
@@ -275,13 +241,18 @@ func (c *Context) SetStatus(code int) {
 	c.statusCode = code
 }
 
+// StatusCode 获取状态码
+func (c *Context) StatusCode() int {
+	return c.statusCode
+}
+
 // Write 写入响应体（辅助方法，通常不直接暴露）
 func (c *Context) Write(bytes []byte) (int, error) {
 	if !c.written {
-		c.Writer.WriteHeader(c.statusCode)
+		c.writer.WriteHeader(c.statusCode)
 		c.written = true
 	}
-	return c.Writer.Write(bytes)
+	return c.writer.Write(bytes)
 }
 
 // SendString 发送纯文本响应
@@ -370,7 +341,7 @@ func (c *Context) Data(code int, contentType string, data []byte) {
 
 // File 发送文件响应
 func (c *Context) File(filepath string) {
-	http.ServeFile(c.Writer, c.Request, filepath)
+	http.ServeFile(c.writer, c.request, filepath)
 }
 
 // SendSuccess 发送成功响应
@@ -456,7 +427,7 @@ func (c *Context) QueryUint64(key string) uint64 {
 
 // QuerySlice 获取字符串切片类型的查询参数
 func (c *Context) QuerySlice(key string) []string {
-	return c.Request.URL.Query()[key]
+	return c.request.URL.Query()[key]
 }
 
 // DefaultQueryWithSlice 当查询参数不存在时返回默认值切片
@@ -503,19 +474,27 @@ func (c *Context) GetQueryBoolDefault(key string, defaultValue bool) bool {
 // 请求头处理方法
 // ============================================================================
 
+// Request 获取原始请求
+func (c *Context) Request() *http.Request {
+	return c.request
+}
+func (c *Context) Method() string {
+	return c.request.Method
+}
+
 // GetHeader 获取请求头
 func (c *Context) GetHeader(key string) string {
-	return c.Request.Header.Get(key)
+	return c.request.Header.Get(key)
 }
 
 // Host 获取主机名
 func (c *Context) Host() string {
-	return c.Request.Host
+	return c.request.Host
 }
 
 // Protocol 获取请求协议
 func (c *Context) Protocol() string {
-	if c.Request.TLS != nil {
+	if c.request.TLS != nil {
 		return "https"
 	}
 	return "http"
@@ -523,7 +502,7 @@ func (c *Context) Protocol() string {
 
 // Referer 获取请求来源
 func (c *Context) Referer() string {
-	return c.Request.Referer()
+	return c.request.Referer()
 }
 
 // Referrer 同Referer（别名）
@@ -647,7 +626,7 @@ func (c *Context) GetTransferEncoding() string {
 
 // IsMethod 判断请求方法
 func (c *Context) IsMethod(method string) bool {
-	return strings.ToUpper(c.Request.Method) == strings.ToUpper(method)
+	return strings.ToUpper(c.request.Method) == strings.ToUpper(method)
 }
 
 // IsGet 判断是否为GET请求
@@ -721,19 +700,19 @@ func (c *Context) IsDeflate() bool {
 
 // Path 获取请求路径
 func (c *Context) Path() string {
-	return c.Request.URL.Path
+	return c.request.URL.Path
 }
 
 // FullPath 获取完整路径（包含查询参数）
 func (c *Context) FullPath() string {
-	return c.Request.URL.RequestURI()
+	return c.request.URL.RequestURI()
 }
 
 // RemoteIP 获取远程IP地址
 func (c *Context) RemoteIP() string {
-	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+	host, _, err := net.SplitHostPort(c.request.RemoteAddr)
 	if err != nil {
-		return c.Request.RemoteAddr
+		return c.request.RemoteAddr
 	}
 	return host
 }
@@ -744,7 +723,7 @@ func (c *Context) ClientIP() string {
 		return c.clientIP
 	}
 
-	xForwardedFor := c.Request.Header.Get("X-Forwarded-For")
+	xForwardedFor := c.request.Header.Get("X-Forwarded-For")
 	if xForwardedFor != "" {
 		ips := strings.Split(xForwardedFor, ",")
 		for _, ip := range ips {
@@ -756,18 +735,18 @@ func (c *Context) ClientIP() string {
 		}
 	}
 
-	xRealIP := c.Request.Header.Get("X-Real-IP")
+	xRealIP := c.request.Header.Get("X-Real-IP")
 	if xRealIP != "" {
 		c.clientIP = xRealIP
 		return xRealIP
 	}
 
-	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+	host, _, err := net.SplitHostPort(c.request.RemoteAddr)
 	if err != nil {
-		if strings.Contains(c.Request.RemoteAddr, ":") {
-			host = strings.Split(c.Request.RemoteAddr, ":")[0]
+		if strings.Contains(c.request.RemoteAddr, ":") {
+			host = strings.Split(c.request.RemoteAddr, ":")[0]
 		} else {
-			host = c.Request.RemoteAddr
+			host = c.request.RemoteAddr
 		}
 	}
 
@@ -785,7 +764,7 @@ func (c *Context) UserAgent() string {
 		return c.userAgent
 	}
 
-	c.userAgent = c.Request.UserAgent()
+	c.userAgent = c.request.UserAgent()
 	return c.userAgent
 }
 
@@ -795,7 +774,7 @@ func (c *Context) UserAgent() string {
 
 // PostForm 获取表单参数
 func (c *Context) PostForm(key string) string {
-	return c.Request.FormValue(key)
+	return c.request.FormValue(key)
 }
 
 // PostFormDefault 获取表单参数，如果不存在则返回默认值
@@ -858,26 +837,26 @@ func (c *Context) GetPostFormBoolDefault(key string, defaultValue bool) bool {
 
 // FormFile 获取上传的文件
 func (c *Context) FormFile(name string) (multipart.File, *multipart.FileHeader, error) {
-	return c.Request.FormFile(name)
+	return c.request.FormFile(name)
 }
 
 // MultipartForm 获取多部分表单
 func (c *Context) MultipartForm() (*multipart.Form, error) {
-	err := c.Request.ParseMultipartForm(32 << 20) // 32MB
+	err := c.request.ParseMultipartForm(32 << 20) // 32MB
 	if err != nil {
 		return nil, err
 	}
-	return c.Request.MultipartForm, nil
+	return c.request.MultipartForm, nil
 }
 
 // Body 获取请求体内容
 func (c *Context) Body() ([]byte, error) {
-	return io.ReadAll(c.Request.Body)
+	return io.ReadAll(c.request.Body)
 }
 
 // BindJSON 解析JSON请求体
 func (c *Context) BindJSON(obj interface{}) error {
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := io.ReadAll(c.request.Body)
 	if err != nil {
 		return err
 	}
@@ -886,7 +865,7 @@ func (c *Context) BindJSON(obj interface{}) error {
 
 // BindJSONStrict 解析JSON请求体（严格模式，不允许未知字段）
 func (c *Context) BindJSONStrict(obj interface{}) error {
-	decoder := json.NewDecoder(c.Request.Body)
+	decoder := json.NewDecoder(c.request.Body)
 	decoder.DisallowUnknownFields()
 	return decoder.Decode(obj)
 }
@@ -898,7 +877,7 @@ func (c *Context) ShouldBindJSON(obj interface{}) error {
 		return fmt.Errorf("content type is not application/json")
 	}
 
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := io.ReadAll(c.request.Body)
 	if err != nil {
 		return err
 	}
@@ -912,7 +891,7 @@ func (c *Context) ShouldBindJSON(obj interface{}) error {
 
 // BindXML 绑定XML请求体
 func (c *Context) BindXML(obj interface{}) error {
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := io.ReadAll(c.request.Body)
 	if err != nil {
 		return err
 	}
@@ -927,7 +906,7 @@ func (c *Context) ShouldBindXML(obj interface{}) error {
 		return fmt.Errorf("content type is not application/xml or text/xml")
 	}
 
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := io.ReadAll(c.request.Body)
 	if err != nil {
 		return err
 	}
@@ -941,7 +920,7 @@ func (c *Context) ShouldBindXML(obj interface{}) error {
 
 // ShouldBindQuery 将查询参数绑定到结构体
 func (c *Context) ShouldBindQuery(obj interface{}) error {
-	values := c.Request.URL.Query()
+	values := c.request.URL.Query()
 	return bindValuesToObject(values, obj)
 }
 
@@ -949,18 +928,18 @@ func (c *Context) ShouldBindQuery(obj interface{}) error {
 func (c *Context) ShouldBindForm(obj interface{}) error {
 	contentType := c.GetHeader("Content-Type")
 	if strings.Contains(contentType, "multipart/") {
-		err := c.Request.ParseMultipartForm(32 << 20) // 32MB
+		err := c.request.ParseMultipartForm(32 << 20) // 32MB
 		if err != nil {
 			return err
 		}
 	} else {
-		err := c.Request.ParseForm()
+		err := c.request.ParseForm()
 		if err != nil {
 			return err
 		}
 	}
 
-	values := c.Request.Form
+	values := c.request.Form
 	return bindValuesToObject(values, obj)
 }
 
@@ -1030,7 +1009,7 @@ func setField(field reflect.Value, value string) {
 
 // Cookie 获取Cookie值
 func (c *Context) Cookie(name string) (string, error) {
-	cookie, err := c.Request.Cookie(name)
+	cookie, err := c.request.Cookie(name)
 	if err != nil {
 		return "", err
 	}
@@ -1048,7 +1027,7 @@ func (c *Context) SetCookie(name, value string, maxAge int, path, domain string,
 		Secure:   secure,
 		HttpOnly: httpOnly,
 	}
-	http.SetCookie(c.Writer, cookie)
+	http.SetCookie(c.writer, cookie)
 }
 
 // HasCookie 检查是否存在指定Cookie
@@ -1114,8 +1093,8 @@ func (c *Context) GetCookieDefault(name, defaultValue string) string {
 func (c *Context) Redirect(code int, location string) {
 	c.SetStatus(code)
 	c.SetHeader("Location", location)
-	c.Writer.WriteHeader(code)
-	_, _ = c.Writer.Write([]byte("Redirecting to: " + location))
+	c.writer.WriteHeader(code)
+	_, _ = c.writer.Write([]byte("Redirecting to: " + location))
 }
 
 // HTTPNotFound 处理 404 错误
@@ -1146,7 +1125,7 @@ func (c *Context) NotFound(message string) {
 // BadRequest 返回400错误
 func (c *Context) BadRequest(message string) {
 	if message == "" {
-		message = "Bad Request"
+		message = "Bad request"
 	}
 	c.Fail(http.StatusBadRequest, message)
 }
@@ -1391,7 +1370,7 @@ func (c *Context) GetContentLength() int64 {
 
 // ContainsFileHeader 检查请求是否包含文件上传
 func (c *Context) ContainsFileHeader(filename string) bool {
-	_, fh, err := c.Request.FormFile(filename)
+	_, fh, err := c.request.FormFile(filename)
 	if err != nil {
 		return false
 	}
@@ -1404,32 +1383,32 @@ func (c *Context) ContainsFileHeader(filename string) bool {
 
 // Deadline 返回请求的截止时间
 func (c *Context) Deadline() (deadline time.Time, ok bool) {
-	if c.Request.Context() != nil {
-		return c.Request.Context().Deadline()
+	if c.request.Context() != nil {
+		return c.request.Context().Deadline()
 	}
 	return
 }
 
 // Done 返回当请求结束或取消时关闭的通道
 func (c *Context) Done() <-chan struct{} {
-	if c.Request.Context() != nil {
-		return c.Request.Context().Done()
+	if c.request.Context() != nil {
+		return c.request.Context().Done()
 	}
 	return nil
 }
 
 // Err 返回请求上下文的错误原因
 func (c *Context) Err() error {
-	if c.Request.Context() != nil {
-		return c.Request.Context().Err()
+	if c.request.Context() != nil {
+		return c.request.Context().Err()
 	}
 	return nil
 }
 
 // Value 返回与键关联的值
 func (c *Context) Value(key interface{}) interface{} {
-	if c.Request.Context() != nil {
-		return c.Request.Context().Value(key)
+	if c.request.Context() != nil {
+		return c.request.Context().Value(key)
 	}
 	return nil
 }
@@ -1441,8 +1420,8 @@ func (c *Context) Value(key interface{}) interface{} {
 // Copy 创建Context副本
 func (c *Context) Copy() *Context {
 	cp := &Context{
-		Request:   c.Request,
-		Writer:    c.Writer,
+		request:   c.request,
+		writer:    c.writer,
 		method:    c.method,
 		path:      c.path,
 		params:    make(map[string]string),
@@ -1586,7 +1565,7 @@ func (c *Context) ServeRange(ctx context.Context, reader RangeReader) {
 			c.InternalServerError(fmt.Sprintf("read full data failed: %v", err))
 			return
 		}
-		io.Copy(c.Writer, fullReader)
+		io.Copy(c.writer, fullReader)
 		return
 	}
 
@@ -1604,7 +1583,7 @@ func (c *Context) ServeRange(ctx context.Context, reader RangeReader) {
 		c.InternalServerError(fmt.Sprintf("read range data failed: %v", err))
 		return
 	}
-	io.Copy(c.Writer, rangeDataReader)
+	io.Copy(c.writer, rangeDataReader)
 }
 
 // -------------------------- 通用Range解析工具（复用并优化） --------------------------

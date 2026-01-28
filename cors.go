@@ -31,7 +31,7 @@ func NewCors() *CorsConfig {
 }
 
 func (c *CorsConfig) HandleHTTP(ctx *Context) {
-	origin := ctx.Request.Header.Get("Origin")
+	origin := ctx.request.Header.Get("Origin")
 
 	if origin == "" {
 		ctx.Next()
@@ -42,7 +42,7 @@ func (c *CorsConfig) HandleHTTP(ctx *Context) {
 
 	if !c.isAllowedOrigin(origin) {
 		ctx.SetStatus(http.StatusForbidden)
-		_, _ = ctx.Writer.Write([]byte("Origin not allowed"))
+		_, _ = ctx.writer.Write([]byte("Origin not allowed"))
 		return
 	}
 
@@ -52,7 +52,7 @@ func (c *CorsConfig) HandleHTTP(ctx *Context) {
 		ctx.SetHeader("Access-Control-Allow-Credentials", "true")
 	}
 
-	if ctx.method == "OPTIONS" || ctx.Request.Header.Get("Access-Control-Request-Method") != "" {
+	if ctx.method == "OPTIONS" || ctx.request.Header.Get("Access-Control-Request-Method") != "" {
 		c.handlePreflight(ctx)
 		return
 	}
@@ -63,14 +63,14 @@ func (c *CorsConfig) HandleHTTP(ctx *Context) {
 
 func (c *CorsConfig) handlePreflight(ctx *Context) {
 	ctx.Abort()
-	origin := ctx.Request.Header.Get("Origin")
-	requestMethod := ctx.Request.Header.Get("Access-Control-Request-Method")
-	requestHeaders := ctx.Request.Header.Get("Access-Control-Request-Headers")
+	origin := ctx.request.Header.Get("Origin")
+	requestMethod := ctx.request.Header.Get("Access-Control-Request-Method")
+	requestHeaders := ctx.request.Header.Get("Access-Control-Request-Headers")
 
 	if requestMethod == "" || !c.isAllowedMethod(requestMethod) {
 		ctx.Abort()
 		ctx.SetStatus(http.StatusForbidden)
-		_, _ = ctx.Writer.Write([]byte("Method not allowed"))
+		_, _ = ctx.writer.Write([]byte("Method not allowed"))
 		return
 	}
 
@@ -80,7 +80,7 @@ func (c *CorsConfig) handlePreflight(ctx *Context) {
 			header = strings.TrimSpace(header)
 			if !c.isAllowedHeaders(header) {
 				ctx.SetStatus(http.StatusForbidden)
-				_, _ = ctx.Writer.Write([]byte("Header not allowed: " + header))
+				_, _ = ctx.writer.Write([]byte("Header not allowed: " + header))
 				return
 			}
 		}
@@ -117,7 +117,7 @@ func (c *CorsConfig) handlePreflight(ctx *Context) {
 }
 
 func (c *CorsConfig) handleRequest(ctx *Context) {
-	origin := ctx.Request.Header.Get("Origin")
+	origin := ctx.request.Header.Get("Origin")
 
 	ctx.SetHeader("Access-Control-Allow-Origin", origin)
 

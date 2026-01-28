@@ -1,7 +1,7 @@
 package FastGo
 
 import (
-	"log"
+	"LogX"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,9 +14,11 @@ type App struct {
 	core        *core
 	router      *Router
 	middlewares []HandlerStruct
+	logger      *LogX.SyncLogger
 }
 
 func NewFastGo() *App {
+	logger, _ := LogX.NewDefaultSyncLogger("FastGo")
 	router := NewRouter()
 	middlewares := make([]HandlerStruct, 0)
 	middlewares = append(middlewares, NewMiddlewareLog())
@@ -24,6 +26,7 @@ func NewFastGo() *App {
 		core:        newCore(),
 		router:      router,
 		middlewares: middlewares,
+		logger:      logger,
 	}
 	return app
 }
@@ -51,22 +54,30 @@ func (h *App) RunTLS(addr, certFile, keyFile string) {
 	h.core.addHandler(midToHandler(h.middlewares)...)
 	h.core.addHandler(h.router.HandleHTTP)
 	h.core.SetCert(certFile, keyFile)
-	err := h.core.listenHTTPS(addr, certFile, keyFile)
-	if err != nil {
-		return
-	}
+	h.logger.Info("Server started at %s", addr)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		if err := h.core.listenHTTPS(addr, certFile, keyFile); err != nil && err != http.ErrServerClosed {
+			h.logger.Error("Server failed to start: %v", err)
+			return
+		}
+	}()
+	h.gracefulShutdown()
+	wg.Wait()
+
 }
 
 func (h *App) Run(addr string) {
 	h.core.addHandler(midToHandler(h.middlewares)...)
 	h.core.addHandler(h.router.HandleHTTP)
-
+	h.logger.Info("Server started at %s", addr)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		if err := h.core.listenHTTP(addr); err != nil && err != http.ErrServerClosed {
-			log.Printf("Server failed to start: %v", err)
+			h.logger.Error("Server failed to start: %v", err)
 			return
 		}
 	}()
@@ -87,6 +98,7 @@ func (h *App) gracefulShutdown() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	_ = <-sigCh
 	h.core.Close()
+	h.logger.Info("Server shutting down...")
 }
 
 type core struct {

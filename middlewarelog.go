@@ -1,23 +1,66 @@
 package FastGo
 
-import "strconv"
+import (
+	"LogX"
+	"strconv"
+	"time"
+)
 
+// 假设你的 Context 结构体有以下核心方法（如果没有，需根据实际结构适配）：
+// - Set(key string, value interface{})：设置上下文值
+// - Get(key string) interface{}：获取上下文值
+// - StatusCode() int：获取响应状态码
+// - Error() error：获取请求处理中的错误
+// - request() *http.request：获取原始HTTP请求
+// - UserID() int64：获取当前登录用户ID（业务字段，按需调整）
+
+// MiddlewareLog HTTP日志中间件
 type MiddlewareLog struct {
-	defaultLoggerMid *AsyncLogger
+	defaultLoggerMid *LogX.AsyncLogger
 }
 
+// HandleHTTP 核心中间件逻辑：采集并打印HTTP请求日志
 func (m *MiddlewareLog) HandleHTTP(context *Context) {
-	protocol := "HTTP"
-	if context.Request.TLS != nil {
-		protocol = "HTTPS"
-	}
-	m.defaultLoggerMid.InfoWithModule(protocol, context.ClientIP()+"-"+context.method+" ")
+	startTime := time.Now()
 	context.Next()
-	m.defaultLoggerMid.InfoWithModule(protocol, context.ClientIP()+"-"+context.method+" "+strconv.Itoa(context.statusCode)+" "+context.StatusString(context.statusCode))
+	elapsed := time.Since(startTime)
+	responseTime := float64(elapsed.Nanoseconds()) / 1e6 // 转毫秒
+
+	// 采集核心日志字段
+	logFields := map[string]interface{}{
+
+		"method":        context.Method(),
+		"path":          context.Path(),
+		"client_ip":     context.ClientIP(), // 真实客户端IP（处理反向代理）
+		"status_code":   context.statusCode,
+		"response_time": strconv.FormatFloat(responseTime, 'f', 1, 64),
+		"user_agent":    context.UserAgent(),
+		"service":       "HTTP", // 服务标识
+		"timestamp":     time.Now().Format("2006-01-02 15:04:05.000"),
+	}
+
+	// 正常请求：打印INFO级日志
+	m.defaultLoggerMid.Info(
+		"method:%s path:%s ip:%s code:%d rt:%sms user_agent:%s",
+		logFields["method"],
+		logFields["path"],
+		logFields["client_ip"],
+		logFields["status_code"],
+		logFields["response_time"],
+		logFields["user_agent"],
+	)
 }
 
+// NewMiddlewareLog 创建日志中间件实例（初始化默认日志器）
 func NewMiddlewareLog() *MiddlewareLog {
+	logger, _ := LogX.NewDefaultAsyncLogger("HTTP")
 	return &MiddlewareLog{
-		NewAsyncLoggerSP(INFO),
+		defaultLoggerMid: logger,
 	}
+}
+
+// SetLogger 自定义日志器（支持外部替换）
+func (m *MiddlewareLog) SetLogger(logger *LogX.AsyncLogger) {
+	m.defaultLoggerMid = logger
+
 }
