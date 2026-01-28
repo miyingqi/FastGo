@@ -135,7 +135,5 @@ func main() {
 		}
 	}
 
-	if err := app.Run(":8080"); err != nil {
-		fmt.Printf("Server error: %v\n", err)
-	}
+	app.Run(":8080")
 }

@@ -605,7 +605,7 @@ type FileLoggerConfig struct {
 // DefaultFileConfig 默认文件日志配置
 var DefaultFileConfig = FileLoggerConfig{
 	Level:       INFO,
-	FilePath:    "app.log",
+	FilePath:    "core.log",
 	MaxFileSize: 10 * 1024 * 1024, // 10MB
 	EnableColor: true,
 }
