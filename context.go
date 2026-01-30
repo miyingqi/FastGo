@@ -11,7 +11,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -146,6 +148,11 @@ type Context struct {
 
 	// 路由参数
 	Params Params
+
+	// 新增字段：并发安全相关
+	owner uintptr    // 记录当前拥有者协程的 ID
+	mu    sync.Mutex // 保护 critical section
+	mutex sync.Mutex // 保留原有的 mutex 用于 Write 方法
 }
 
 // ============================================================================
@@ -154,62 +161,119 @@ type Context struct {
 
 func NewContext(writer http.ResponseWriter, request *http.Request) *Context {
 	return &Context{
-		request:   request,
-		writer:    writer,
+		// 原始 HTTP 对象：直接赋值入参，无默认值
+		request: request,
+		writer:  writer,
+
+		// 请求信息：基础字段初始化为空，由 Reset 从 request 同步；map/切片按需初始化
 		method:    "",
 		path:      "",
-		params:    make(map[string]string),
-		query:     make(url.Values),
-		headers:   make(map[string]string),
-		handlers:  make([]HandlerFunc, 0),
-		index:     -1,
-		errors:    make([]error, 0),
-		store:     make(map[interface{}]interface{}),
-		startTime: time.Time{},
-		requestID: "",
-		aborted:   false,
-		written:   false,
-		Params:    make(Params, 0),
+		params:    make(map[string]string, 4), // 初始容量4，适配常规路由参数（如/id/:name）
+		query:     nil,                        // 无需提前make，Reset 会直接赋值 request.URL.Query()
+		clientIP:  "",                         // 延迟计算，初始空
+		userAgent: "",                         // 延迟计算，初始空
+
+		// 响应信息：核心字段初始化为0/false，map按需初始化，保证响应规范
+		statusCode: 0,
+		headers:    make(map[string]string, 8), // 初始容量8，适配常规HTTP响应头
+
+		// 数据存储：map初始化+读写锁零值（sync.RWMutex值类型自动初始化）
+		store:      make(map[interface{}]interface{}, 4), // 初始容量4，适配常规存储需求
+		storeMutex: sync.RWMutex{},                       // 显式初始化，代码更清晰（可省略，Go自动赋零值）
+
+		// 处理器链：赋值入参+标准初始索引-1（从第一个处理器开始执行）
+		handlers: nil,
+		index:    -1,
+
+		// 错误处理：nil切片更高效，Reset 会用 [:0] 复用（nil[:0] 仍是空切片）
+		errors: nil,
+
+		// 执行控制：默认不终止处理器链执行
+		aborted: false,
+
+		// 性能追踪：初始化为零值/空，由 Reset 同步新请求信息
+		startTime: time.Time{}, // 时间零值，Reset 会重置为 time.Now()
+		requestID: "",          // 从请求头获取，初始空
+
+		// 响应标记：默认未写入响应
+		written: false,
+
+		// 路由参数切片：nil切片更高效，Reset 会用 [:0] 复用
+		Params: nil,
 	}
 }
 
 // Reset 重置上下文以供复用
 func (c *Context) Reset(writer http.ResponseWriter, request *http.Request) {
+	// ************************** 1. 重置原始 HTTP 核心对象 **************************
 	c.request = request
 	c.writer = writer
-	c.method = request.Method
-	c.path = request.URL.Path
-	c.requestID = request.Header.Get("X-Request-Id")
-	c.startTime = time.Now()
 
-	c.clientIP = ""
-	c.userAgent = ""
+	// ************************** 2. 重置请求信息（从新 request 同步，基础信息） **************************
+	if request != nil {
+		c.method = request.Method
+		c.path = request.URL.Path
+		c.query = request.URL.Query()                    // url.Values 是map，直接赋值新请求的查询参数
+		c.requestID = request.Header.Get("X-Request-Id") // 重置请求ID，从新请求头获取
+	}
+	c.clientIP = ""  // 设空，配合延迟计算（首次调用ClientIP()时自动计算）
+	c.userAgent = "" // 设空，配合延迟计算（首次调用UserAgent()时自动计算）
 
-	c.query = request.URL.Query()
-
-	c.statusCode = 0
-	c.headers = make(map[string]string) // 创建新map以避免引用共享
-
-	c.handlers = c.handlers[:0] // 清空切片但保留容量
-
-	c.index = -1
-	c.aborted = false
-	c.written = false
-
-	c.errors = c.errors[:0]
-
+	// ************************** 3. 重置请求参数（map/切片类型，复用对象+清空内容，减少GC） **************************
+	// 路由参数 map：清空键值对，复用原有map
+	if c.params != nil {
+		for k := range c.params {
+			delete(c.params, k)
+		}
+	} else {
+		c.params = make(map[string]string, 4) // 仅为nil时新建，初始容量适配常规路由参数
+	}
+	// 路由参数切片 Params：清空切片但保留容量，减少内存分配
 	c.Params = c.Params[:0]
 
-	c.storeMutex.Lock()
-	for k := range c.store {
-		delete(c.store, k)
+	// ************************** 4. 重置响应信息（核心！彻底解决响应写入错误） **************************
+	c.statusCode = 0  // 重置响应状态码，默认200（未手动设置时）
+	c.written = false // 重置响应写入标记，未写入任何响应
+	// 核心操作：清空原生 http.ResponseWriter 的 Header（解决Content-Length/WriteHeader错误的关键）
+	if writer != nil {
+		for k := range c.writer.Header() {
+			delete(c.writer.Header(), k)
+		}
 	}
-	c.storeMutex.Unlock()
-}
+	// 自定义 headers map：复用原有对象+清空内容，避免频繁make
+	if c.headers != nil {
+		for k := range c.headers {
+			delete(c.headers, k)
+		}
+	} else {
+		c.headers = make(map[string]string, 8) // 仅为nil时新建，初始容量8适配常规响应头
+	}
 
-// ============================================================================
-// 日志相关方法
-// ============================================================================
+	// ************************** 5. 重置数据存储（加锁保证并发安全，复用map） **************************
+	c.storeMutex.Lock()
+	defer c.storeMutex.Unlock()
+	if c.store != nil {
+		for k := range c.store {
+			delete(c.store, k)
+		}
+	} else {
+		c.store = make(map[interface{}]interface{}, 4) // 仅为nil时新建
+	}
+
+	// ************************** 6. 重置处理器链（直接覆盖，删除冗余操作） **************************
+	c.handlers = make([]HandlerFunc, 0) // 直接赋值新的处理器链，无冗余的[:0]操作
+	c.index = -1                        // 重置执行索引，从第一个处理器开始执行
+
+	// ************************** 7. 重置错误处理（切片复用，清空内容） **************************
+	c.errors = c.errors[:0] // 清空错误切片，保留容量
+
+	// ************************** 8. 重置执行控制（恢复默认执行状态） **************************
+	c.aborted = false // 重置终止标记，允许处理器链正常执行
+
+	// ************************** 9. 重置性能追踪（同步新请求的追踪信息） **************************
+	c.startTime = time.Now() // 重置请求开始时间
+
+}
 
 // ============================================================================
 // 响应处理相关方法
@@ -246,17 +310,124 @@ func (c *Context) StatusCode() int {
 	return c.statusCode
 }
 
-// Write 写入响应体（辅助方法，通常不直接暴露）
+// Write 写入响应体（修复版本 - 解决 WriteHeader 冲突问题）
 func (c *Context) Write(bytes []byte) (int, error) {
-	if !c.written {
-		c.writer.WriteHeader(c.statusCode)
-		c.written = true
+	// 核心修改1：若已写入，直接返回错误，拒绝后续所有Write调用（彻底阻止多次写入）
+	if c.written || c.writer == nil {
+		return 0, fmt.Errorf("response already written: duplicate Write call")
 	}
-	return c.writer.Write(bytes)
+
+	// 核心修改2：初始化状态码为200（合法默认值），避免底层隐式WriteHeader
+	if c.statusCode < 100 || c.statusCode >= 600 {
+		c.statusCode = http.StatusOK
+	}
+
+	// 使用互斥锁保护 ResponseWriter 的并发访问
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	// 双重检查，防止在获取锁期间被其他goroutine写入
+	if c.written {
+		return 0, fmt.Errorf("response already written: concurrent Write call")
+	}
+
+	// 检查所有权（额外的安全层）
+	currentGoroutine := getCurrentGoroutineID()
+	if c.owner != currentGoroutine {
+		log.Printf("Warning: Context %p used by non-owner gor程 for Write (owner: %d, current: %d)", c, c.owner, currentGoroutine)
+		return 0, fmt.Errorf("unauthorized write attempt from non-owner gor程")
+	}
+
+	// 关键修复：检查是否已经设置了 Content-Length 头
+	contentLength := c.writer.Header().Get("Content-Length")
+
+	// 标记为已写入（在 WriteHeader 前标记，防止并发写入）
+	c.written = true
+
+	// 只有在没有设置 Content-Length 时才显式调用 WriteHeader
+	// 如果已经设置了 Content-Length，让 Go 标准库自动处理
+	if contentLength == "" {
+		c.writer.WriteHeader(c.statusCode)
+	}
+
+	// 写入响应体
+	write, err := c.writer.Write(bytes)
+
+	// 如果写入失败，重置written状态以便重试
+	if err != nil {
+		c.written = false
+	}
+
+	return write, err
 }
 
-// SendString 发送纯文本响应
+// getCurrentGoroutineID 获取当前协程 ID 的辅助函数
+func getCurrentGoroutineID() uintptr {
+	var buf [64]byte
+	n := runtime.Stack(buf[:], false)
+	idField := strings.Fields(strings.TrimPrefix(string(buf[:n]), "goroutine "))[0]
+	id, _ := strconv.ParseUint(idField, 10, 64)
+	return uintptr(id)
+}
+
+// ConcurrentWrite 支持并发写入的响应方法
+func (c *Context) ConcurrentWrite(bytes []byte) (int, error) {
+	// 使用通道收集响应数据
+	type writeResult struct {
+		n   int
+		err error
+	}
+
+	resultChan := make(chan writeResult, 1)
+
+	go func() {
+		n, err := c.Write(bytes)
+		resultChan <- writeResult{n: n, err: err}
+	}()
+
+	result := <-resultChan
+	return result.n, result.err
+}
+
+// BufferedWrite 使用缓冲区的写入方法
+func (c *Context) BufferedWrite(bytes []byte) (int, error) {
+	// 如果已经写入，直接返回错误
+	if c.written {
+		return 0, fmt.Errorf("response already written")
+	}
+
+	// 使用缓冲区收集响应数据
+	buffer := make([]byte, len(bytes))
+	copy(buffer, bytes)
+
+	// 通过互斥锁确保原子性写入
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	// 双重检查
+	if c.written {
+		return 0, fmt.Errorf("response already written: concurrent access")
+	}
+
+	// 设置状态码
+	if c.statusCode < 100 || c.statusCode >= 600 {
+		c.statusCode = http.StatusOK
+	}
+
+	// 写入响应
+	c.writer.WriteHeader(c.statusCode)
+	c.written = true
+	return c.writer.Write(buffer)
+}
+
+// SendString 发送纯文本响应（增强版 - 包含所有权检查）
 func (c *Context) SendString(code int, body string) {
+	// 检查所有权
+	if c.owner != getCurrentGoroutineID() {
+		log.Printf("Warning: Context %p used by non-owner goroutine for SendString", c)
+		return
+	}
+
 	c.SetStatus(code)
 	c.SetHeader("Content-Type", "text/plain; charset=utf-8")
 	_, err := c.Write([]byte(body))
@@ -341,7 +512,25 @@ func (c *Context) Data(code int, contentType string, data []byte) {
 
 // File 发送文件响应
 func (c *Context) File(filepath string) {
-	http.ServeFile(c.writer, c.request, filepath)
+	f, err := os.Open(filepath)
+	if err != nil {
+		c.NotFound("file not found")
+		return
+	}
+	defer f.Close()
+
+	// 获取文件信息，设置响应头
+	fi, _ := f.Stat()
+
+	c.SetHeader("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", fi.Name()))
+	c.SetHeader("Content-Type", http.DetectContentType(make([]byte, 512)))
+
+	// 统一走 Write 方法，通过 io.ReadAll 读取后写入
+	data, _ := io.ReadAll(f)
+	_, err = c.Write(data)
+	if err != nil {
+		return
+	}
 }
 
 // SendSuccess 发送成功响应
@@ -1089,12 +1278,39 @@ func (c *Context) GetCookieDefault(name, defaultValue string) string {
 // 重定向和错误处理方法
 // ============================================================================
 
-// Redirect 重定向
+// Redirect 重定向（修复版本 - 避免 WriteHeader 冲突）
 func (c *Context) Redirect(code int, location string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	// 若已写入，直接返回
+	if c.written || c.writer == nil {
+		log.Printf("Redirect failed: response already written")
+		return
+	}
+
+	// 校验重定向状态码合法性（3xx系列）
+	if code < 300 || code >= 400 {
+		code = http.StatusFound // 默认302
+	}
+
+	// 设置重定向响应头+状态码
 	c.SetStatus(code)
 	c.SetHeader("Location", location)
-	c.writer.WriteHeader(code)
-	_, _ = c.writer.Write([]byte("Redirecting to: " + location))
+	c.SetHeader("Content-Type", "text/plain; charset=utf-8")
+
+	// 标记为已写入
+	c.written = true
+
+	// 检查是否已经设置了 Content-Length
+	contentLength := c.writer.Header().Get("Content-Length")
+	if contentLength == "" {
+		c.writer.WriteHeader(code)
+	}
+
+	// 写入重定向提示文本
+	redirectMsg := fmt.Sprintf("Redirecting to: %s", location)
+	_, _ = c.writer.Write([]byte(redirectMsg))
 }
 
 // HTTPNotFound 处理 404 错误
@@ -1206,7 +1422,8 @@ func (c *Context) IsAborted() bool {
 
 // SetHandles 设置中间件链
 func (c *Context) SetHandles(handlers []HandlerFunc) {
-	c.handlers = handlers
+	c.handlers = make([]HandlerFunc, len(handlers))
+	copy(c.handlers, handlers)
 }
 
 // Error 添加错误到错误列表
@@ -1671,4 +1888,9 @@ func ParseRange(rangeHeader string, totalSize int64) ([]RangeSpec, bool, error) 
 	}
 
 	return specs, len(specs) > 0, nil
+}
+
+// GetOwner 获取当前 Context 的拥有者协程 ID
+func (c *Context) GetOwner() uintptr {
+	return c.owner
 }

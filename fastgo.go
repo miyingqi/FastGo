@@ -18,7 +18,7 @@ type App struct {
 }
 
 func NewFastGo() *App {
-	logger, _ := LogX.NewDefaultSyncLogger("FastGo")
+	logger := LogX.NewDefaultSyncLogger("FastGo")
 	router := NewRouter()
 	middlewares := make([]HandlerStruct, 0)
 	middlewares = append(middlewares, NewMiddlewareLog())
@@ -50,22 +50,22 @@ func (h *App) Group(prefix string) *RouteGroup {
 func (h *App) AddRouter(router *Router) {
 	h.router.MergeRouter(router)
 }
+
 func (h *App) RunTLS(addr, certFile, keyFile string) {
 	h.core.addHandler(midToHandler(h.middlewares)...)
 	h.core.addHandler(h.router.HandleHTTP)
 	h.core.SetCert(certFile, keyFile)
-	h.logger.Info("Server started at %s", addr)
+	h.logger.Info("Server started at %s (TLS)", addr)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		if err := h.core.listenHTTPS(addr, certFile, keyFile); err != nil && err != http.ErrServerClosed {
-			h.logger.Error("Server failed to start: %v", err)
+			h.logger.Error("Server failed to start (TLS): %v", err)
 			return
 		}
 	}()
 	h.gracefulShutdown()
 	wg.Wait()
-
 }
 
 func (h *App) Run(addr string) {
@@ -81,9 +81,8 @@ func (h *App) Run(addr string) {
 			return
 		}
 	}()
-
 	h.gracefulShutdown()
-	wg.Wait() // 等待服务器关闭
+	wg.Wait()
 }
 
 // Use 添加中间件到应用
@@ -91,22 +90,20 @@ func (h *App) Use(middlewares ...HandlerStruct) {
 	h.middlewares = append(h.middlewares, middlewares...)
 }
 
-// Run 启动服务器并支持优雅关机
-
+// gracefulShutdown 优雅关闭服务器
 func (h *App) gracefulShutdown() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	_ = <-sigCh
-	h.core.Close()
 	h.logger.Info("Server shutting down...")
 }
 
 type core struct {
 	server       *http.Server
 	handlerChain []HandlerFunc
-	contextPool  sync.Pool // 上下文池
-	cert         string
-	key          string
+	contextPool  sync.Pool // 上下文池，复用ctx避免GC
+	cert         string    // TLS证书路径
+	key          string    // TLS密钥路径
 }
 
 func newCore() *core {
@@ -125,7 +122,6 @@ func newCore() *core {
 			},
 		},
 	}
-
 }
 
 func (s *core) listenHTTP(addr string) error {
@@ -133,35 +129,49 @@ func (s *core) listenHTTP(addr string) error {
 	s.server.Handler = s
 	return s.server.ListenAndServe()
 }
+
 func (s *core) listenHTTPS(addr, certFile, keyFile string) error {
 	s.server.Addr = addr
 	s.server.Handler = s
 	return s.server.ListenAndServeTLS(certFile, keyFile)
 }
+
+// ServeHTTP 单routine处理HTTP请求
 func (s *core) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	// 1. 从对象池获取ctx，失败则新建（兜底）
 	ctx, ok := s.contextPool.Get().(*Context)
-	if !ok {
+	if !ok || ctx == nil {
 		ctx = NewContext(writer, request)
 	} else {
 		ctx.Reset(writer, request)
 	}
+
+	// 2. 设置处理器链
 	ctx.SetHandles(s.handlerChain)
+
+	// 3. 直接在当前goroutine中执行处理器链（单routine模式）
 	ctx.Next()
+
+	// 4. 处理完成后归还context到池中
 	s.contextPool.Put(ctx)
 }
+
 func (s *core) SetCert(cert, key string) {
 	s.cert = cert
 	s.key = key
 }
+
 func (s *core) addHandler(handler ...HandlerFunc) {
 	s.handlerChain = append(s.handlerChain, handler...)
 }
+
 func (s *core) Close() {
 	err := s.server.Close()
 	if err != nil {
 		return
 	}
 }
+
 func midToHandler(middlewares []HandlerStruct) []HandlerFunc {
 	handlers := make([]HandlerFunc, 0)
 	for _, middleware := range middlewares {

@@ -53,7 +53,7 @@ func (m *MiddlewareLog) HandleHTTP(context *Context) {
 
 // NewMiddlewareLog 创建日志中间件实例（初始化默认日志器）
 func NewMiddlewareLog() *MiddlewareLog {
-	logger, _ := LogX.NewDefaultAsyncLogger("HTTP")
+	logger := LogX.NewDefaultAsyncLogger("HTTP")
 	return &MiddlewareLog{
 		defaultLoggerMid: logger,
 	}
