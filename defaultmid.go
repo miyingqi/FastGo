@@ -6,21 +6,12 @@ import (
 	"time"
 )
 
-// 假设你的 Context 结构体有以下核心方法（如果没有，需根据实际结构适配）：
-// - Set(key string, value interface{})：设置上下文值
-// - Get(key string) interface{}：获取上下文值
-// - StatusCode() int：获取响应状态码
-// - Error() error：获取请求处理中的错误
-// - request() *http.request：获取原始HTTP请求
-// - UserID() int64：获取当前登录用户ID（业务字段，按需调整）
-
-// MiddlewareLog HTTP日志中间件
 type MiddlewareLog struct {
 	defaultLoggerMid *LogX.AsyncLogger
 }
 
 // HandleHTTP 核心中间件逻辑：采集并打印HTTP请求日志
-func (m *MiddlewareLog) HandleHTTP(context *Context) {
+func (m *MiddlewareLog) HandleHTTP(context ContextInterface) {
 	startTime := time.Now()
 	context.Next()
 	elapsed := time.Since(startTime)
@@ -32,7 +23,7 @@ func (m *MiddlewareLog) HandleHTTP(context *Context) {
 		"method":        context.Method(),
 		"path":          context.Path(),
 		"client_ip":     context.ClientIP(), // 真实客户端IP（处理反向代理）
-		"status_code":   context.statusCode,
+		"status_code":   context.StatusCode(),
 		"response_time": strconv.FormatFloat(responseTime, 'f', 1, 64),
 		"user_agent":    context.UserAgent(),
 		"service":       "HTTP", // 服务标识

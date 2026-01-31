@@ -1,0 +1,295 @@
+basePath: /
+host: localhost:8888
+info:
+  contact: {}
+  description: 这是一个使用FastGo框架构建的API示例
+  title: FastGo API
+  version: "1.0"
+paths:
+  /admin/dashboard:
+    get:
+      consumes:
+      - application/json
+      description: 获取管理员仪表板信息
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            type: string
+      summary: 管理员仪表板
+      tags:
+      - 管理员
+  /admin/users:
+    get:
+      consumes:
+      - application/json
+      description: 管理系统中的用户
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            type: string
+      summary: 管理用户
+      tags:
+      - 管理员
+  /api/v1/ping:
+    get:
+      consumes:
+      - application/json
+      description: 检查API服务是否正常运行
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            type: string
+      summary: API健康检查
+      tags:
+      - API v1
+  /api/v1/status:
+    get:
+      consumes:
+      - application/json
+      description: 获取服务器当前状态信息
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 获取服务器状态
+      tags:
+      - API v1
+  /api/v2/products/create:
+    post:
+      consumes:
+      - application/json
+      description: 在API v2版本中创建新产品
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            type: string
+      summary: 创建产品
+      tags:
+      - API v2 - 产品
+  /api/v2/products/list:
+    get:
+      consumes:
+      - application/json
+      description: 获取API v2版本的产品列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            type: string
+      summary: 获取产品列表
+      tags:
+      - API v2 - 产品
+  /api/v2/users/admin/permissions:
+    get:
+      consumes:
+      - application/json
+      description: 获取用户的管理权限信息
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            type: string
+      summary: 获取用户权限
+      tags:
+      - API v2 - 用户管理
+  /api/v2/users/admin/roles:
+    post:
+      consumes:
+      - application/json
+      description: 为用户设置角色
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            type: string
+      summary: 设置用户角色
+      tags:
+      - API v2 - 用户管理
+  /api/v2/users/create:
+    post:
+      consumes:
+      - application/json
+      description: 在API v2版本中创建新用户
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            type: string
+      summary: 创建用户
+      tags:
+      - API v2 - 用户
+  /api/v2/users/list:
+    get:
+      consumes:
+      - application/json
+      description: 获取API v2版本的用户列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            type: string
+      summary: 获取用户列表
+      tags:
+      - API v2 - 用户
+  /user/dashboard/settings:
+    get:
+      consumes:
+      - application/json
+      description: 获取用户仪表板的设置信息
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            type: string
+      summary: 获取仪表板设置
+      tags:
+      - 用户面板
+  /user/dashboard/settings/profile:
+    get:
+      consumes:
+      - application/json
+      description: 获取用户的个人资料设置
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            type: string
+      summary: 获取个人资料设置
+      tags:
+      - 用户面板
+    put:
+      consumes:
+      - application/json
+      description: 更新用户的个人资料
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            type: string
+      summary: 更新个人资料
+      tags:
+      - 用户面板
+  /users:
+    get:
+      consumes:
+      - application/json
+      description: 获取系统中的所有用户列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            type: string
+      summary: 获取所有用户
+      tags:
+      - 用户管理
+    post:
+      consumes:
+      - application/json
+      description: 创建一个新的用户
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            type: string
+      summary: 创建新用户
+      tags:
+      - 用户管理
+  /users/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 根据用户ID删除用户
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            type: string
+      summary: 删除用户
+      tags:
+      - 用户管理
+    get:
+      consumes:
+      - application/json
+      description: 根据用户ID获取用户详细信息
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            type: string
+      summary: 根据ID获取用户
+      tags:
+      - 用户管理
+    put:
+      consumes:
+      - application/json
+      description: 根据用户ID更新用户信息
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            type: string
+      summary: 更新用户信息
+      tags:
+      - 用户管理
+swagger: "2.0"

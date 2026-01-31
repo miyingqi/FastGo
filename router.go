@@ -163,9 +163,9 @@ func (r *Router) addRoute(path, method string, handlers HandleFuncChain) {
 }
 
 // HandleHTTP  请求处理
-func (r *Router) HandleHTTP(c *Context) {
-	method := c.method
-	path := c.path
+func (r *Router) HandleHTTP(c ContextInterface) {
+	method := c.Method()
+	path := c.Path()
 
 	routeNode, ok := r.route[method]
 	if !ok {
@@ -180,7 +180,7 @@ func (r *Router) HandleHTTP(c *Context) {
 	}
 
 	for key, value := range params {
-		c.Params = append(c.Params, Param{Key: key, Value: value})
+		c.SetParam(key, value)
 	}
 
 	for _, handler := range matchedNode.Handlers {

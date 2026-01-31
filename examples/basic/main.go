@@ -19,7 +19,7 @@ import (
 // @Produce json
 // @Success 200 {string} string "成功"
 // @Router /users [get]
-func GetUsers(c *FastGo.Context) {
+func GetUsers(c FastGo.ContextInterface) {
 	time.Sleep(3 * time.Second)
 	c.SendString(200, "GET /users")
 }
@@ -32,7 +32,7 @@ func GetUsers(c *FastGo.Context) {
 // @Produce json
 // @Success 200 {string} string "成功"
 // @Router /users [post]
-func CreateUser(c *FastGo.Context) {
+func CreateUser(c FastGo.ContextInterface) {
 	c.SendString(200, "POST /users")
 }
 
@@ -45,8 +45,8 @@ func CreateUser(c *FastGo.Context) {
 // @Param id path string true "用户ID"
 // @Success 200 {string} string "成功"
 // @Router /users/{id} [get]
-func GetUserByID(c *FastGo.Context) {
-	id := c.Params.ByName("id")
+func GetUserByID(c FastGo.ContextInterface) {
+	id := c.GetPathParam("id")
 	c.SendString(200, fmt.Sprintf("GET /users/%s", id))
 }
 
@@ -59,8 +59,8 @@ func GetUserByID(c *FastGo.Context) {
 // @Param id path string true "用户ID"
 // @Success 200 {string} string "成功"
 // @Router /users/{id} [put]
-func UpdateUser(c *FastGo.Context) {
-	id := c.Params.ByName("id")
+func UpdateUser(c FastGo.ContextInterface) {
+	id := c.GetPathParam("id")
 	c.SendString(200, fmt.Sprintf("PUT /users/%s", id))
 }
 
@@ -73,8 +73,8 @@ func UpdateUser(c *FastGo.Context) {
 // @Param id path string true "用户ID"
 // @Success 200 {string} string "成功"
 // @Router /users/{id} [delete]
-func DeleteUser(c *FastGo.Context) {
-	id := c.Params.ByName("id")
+func DeleteUser(c FastGo.ContextInterface) {
+	id := c.GetPathParam("id")
 	c.SendString(200, fmt.Sprintf("DELETE /users/%s", id))
 }
 
@@ -86,7 +86,7 @@ func DeleteUser(c *FastGo.Context) {
 // @Produce json
 // @Success 200 {string} string "成功"
 // @Router /admin/dashboard [get]
-func AdminDashboard(c *FastGo.Context) {
+func AdminDashboard(c FastGo.ContextInterface) {
 	c.SendString(200, "Admin Dashboard")
 }
 
@@ -98,7 +98,7 @@ func AdminDashboard(c *FastGo.Context) {
 // @Produce json
 // @Success 200 {string} string "成功"
 // @Router /admin/users [get]
-func AdminUsers(c *FastGo.Context) {
+func AdminUsers(c FastGo.ContextInterface) {
 	c.SendString(200, "Admin Users Management")
 }
 
@@ -110,7 +110,7 @@ func AdminUsers(c *FastGo.Context) {
 // @Produce json
 // @Success 200 {string} string "成功"
 // @Router /api/v1/ping [get]
-func APIPing(c *FastGo.Context) {
+func APIPing(c FastGo.ContextInterface) {
 	c.SendString(200, "API v1 Ping")
 }
 
@@ -122,7 +122,7 @@ func APIPing(c *FastGo.Context) {
 // @Produce json
 // @Success 200 {object} map[string]string "成功"
 // @Router /api/v1/status [get]
-func APIStatus(c *FastGo.Context) {
+func APIStatus(c FastGo.ContextInterface) {
 	c.SendJson(200, FastGo.FJ{
 		"status": "ok",
 		"server": "FastGo",
@@ -137,7 +137,7 @@ func APIStatus(c *FastGo.Context) {
 // @Produce json
 // @Success 200 {string} string "成功"
 // @Router /api/v2/users/list [get]
-func GetUsersV2(c *FastGo.Context) {
+func GetUsersV2(c FastGo.ContextInterface) {
 	c.SendString(200, "API v2 - Users List")
 }
 
@@ -149,7 +149,7 @@ func GetUsersV2(c *FastGo.Context) {
 // @Produce json
 // @Success 200 {string} string "成功"
 // @Router /api/v2/users/create [post]
-func CreateUserV2(c *FastGo.Context) {
+func CreateUserV2(c FastGo.ContextInterface) {
 	c.SendString(200, "API v2 - Create User")
 }
 
@@ -161,7 +161,7 @@ func CreateUserV2(c *FastGo.Context) {
 // @Produce json
 // @Success 200 {string} string "成功"
 // @Router /api/v2/users/admin/permissions [get]
-func GetUserPermissions(c *FastGo.Context) {
+func GetUserPermissions(c FastGo.ContextInterface) {
 	c.SendString(200, "API v2 - Users Admin Permissions")
 }
 
@@ -173,7 +173,7 @@ func GetUserPermissions(c *FastGo.Context) {
 // @Produce json
 // @Success 200 {string} string "成功"
 // @Router /api/v2/users/admin/roles [post]
-func SetUserRoles(c *FastGo.Context) {
+func SetUserRoles(c FastGo.ContextInterface) {
 	c.SendString(200, "API v2 - Set User Roles")
 }
 
@@ -185,7 +185,7 @@ func SetUserRoles(c *FastGo.Context) {
 // @Produce json
 // @Success 200 {string} string "成功"
 // @Router /api/v2/products/list [get]
-func GetProductsV2(c *FastGo.Context) {
+func GetProductsV2(c FastGo.ContextInterface) {
 	c.SendString(200, "API v2 - Products List")
 }
 
@@ -197,7 +197,7 @@ func GetProductsV2(c *FastGo.Context) {
 // @Produce json
 // @Success 200 {string} string "成功"
 // @Router /api/v2/products/create [post]
-func CreateProductV2(c *FastGo.Context) {
+func CreateProductV2(c FastGo.ContextInterface) {
 	c.SendString(200, "API v2 - Create Product")
 }
 
@@ -209,7 +209,7 @@ func CreateProductV2(c *FastGo.Context) {
 // @Produce json
 // @Success 200 {string} string "成功"
 // @Router /user/dashboard/settings [get]
-func GetDashboardSettings(c *FastGo.Context) {
+func GetDashboardSettings(c FastGo.ContextInterface) {
 	c.SendString(200, "User Dashboard Settings")
 }
 
@@ -221,7 +221,7 @@ func GetDashboardSettings(c *FastGo.Context) {
 // @Produce json
 // @Success 200 {string} string "成功"
 // @Router /user/dashboard/settings/profile [get]
-func GetProfileSettings(c *FastGo.Context) {
+func GetProfileSettings(c FastGo.ContextInterface) {
 	c.SendString(200, "User Profile Settings")
 }
 
@@ -233,7 +233,7 @@ func GetProfileSettings(c *FastGo.Context) {
 // @Produce json
 // @Success 200 {string} string "成功"
 // @Router /user/dashboard/settings/profile [put]
-func UpdateProfile(c *FastGo.Context) {
+func UpdateProfile(c FastGo.ContextInterface) {
 	c.SendString(200, "Update User Profile")
 }
 
@@ -277,7 +277,7 @@ func main() {
 	adminGroup := app.Group("/admin")
 	{
 		// 为admin组添加中间件
-		adminGroup.Use(func(c *FastGo.Context) {
+		adminGroup.Use(func(c FastGo.ContextInterface) {
 			fmt.Println("Admin middleware executed")
 			c.SetHeader("X-Middleware", "admin")
 			c.Next()

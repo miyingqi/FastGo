@@ -18,16 +18,6 @@ import (
 	"time"
 )
 
-type FJ map[string]interface{}
-type HandlerFunc func(*Context)
-type HandlerStruct interface {
-	HandleHTTP(*Context)
-}
-
-func (h HandlerFunc) HandleHTTP(c *Context) {
-	h(c)
-}
-
 // ============================================================================
 // 参数处理相关类型定义
 // ============================================================================
@@ -146,6 +136,16 @@ type Context struct {
 
 	// 路由参数
 	Params Params
+}
+
+func (c *Context) SetParam(key string, value string) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (c *Context) SetParams(params Params) {
+	//TODO implement me
+	panic("implement me")
 }
 
 // ============================================================================
@@ -1094,7 +1094,7 @@ func (c *Context) Redirect(code int, location string) {
 }
 
 // HTTPNotFound 处理 404 错误
-func HTTPNotFound(c *Context) {
+func HTTPNotFound(c ContextInterface) {
 	c.SetStatus(http.StatusNotFound)
 	c.SetHeader("Content-Type", "text/plain; charset=utf-8")
 	_, err := c.Write([]byte("404 Not Found"))
@@ -1105,7 +1105,7 @@ func HTTPNotFound(c *Context) {
 }
 
 // Status 设置响应状态码并返回Context以支持链式调用
-func (c *Context) Status(code int) *Context {
+func (c *Context) Status(code int) ContextInterface {
 	c.SetStatus(code)
 	return c
 }
@@ -1414,7 +1414,7 @@ func (c *Context) Value(key interface{}) interface{} {
 // ============================================================================
 
 // Copy 创建Context副本
-func (c *Context) Copy() *Context {
+func (c *Context) Copy() ContextInterface {
 	cp := &Context{
 		request:   c.request,
 		writer:    c.writer,
