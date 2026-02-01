@@ -39,10 +39,6 @@ type Param struct {
 // Params 是URL参数列表
 type Params []Param
 
-// ============================================================================
-// 参数获取方法集
-// ============================================================================
-
 // ByName 根据参数名获取参数值
 func (ps Params) ByName(name string) string {
 	for _, p := range ps {
@@ -98,10 +94,6 @@ func (ps Params) ByNameDefault(name, defaultValue string) string {
 	return value
 }
 
-// ============================================================================
-// Context 结构定义
-// ============================================================================
-
 // Context 请求上下文
 type Context struct {
 	// 原始 HTTP 对象
@@ -147,18 +139,14 @@ type Context struct {
 }
 
 func (c *Context) SetParam(key string, value string) {
-	//TODO implement me
-	panic("implement me")
+	c.params[key] = value
 }
 
 func (c *Context) SetParams(params Params) {
-	//TODO implement me
-	panic("implement me")
+	for _, pa := range params {
+		c.params[pa.Key] = pa.Value
+	}
 }
-
-// ============================================================================
-// Context 构造和初始化方法
-// ============================================================================
 
 func NewContext(writer http.ResponseWriter, request *http.Request) *Context {
 	return &Context{
@@ -214,10 +202,6 @@ func (c *Context) Reset(writer http.ResponseWriter, request *http.Request) {
 	}
 	c.storeMutex.Unlock()
 }
-
-// ============================================================================
-// 响应处理相关方法
-// ============================================================================
 
 // SetHeader 设置响应头
 func (c *Context) SetHeader(key string, values ...string) {
@@ -307,7 +291,7 @@ func (c *Context) SendXml(code int, xmlData interface{}) {
 		return
 	}
 
-	// 添加XML声明
+	// 添加 XML声明
 	xmlResponse := []byte(xml.Header + string(bytes))
 	_, err = c.Write(xmlResponse)
 	if err != nil {
@@ -369,10 +353,6 @@ func (c *Context) SendError(code int, message string, errData ...interface{}) {
 	}
 	c.SendJson(code, response)
 }
-
-// ============================================================================
-// 查询参数处理方法
-// ============================================================================
 
 // Query 获取查询参数
 func (c *Context) Query(key string) string {
@@ -473,10 +453,6 @@ func (c *Context) GetQueryBoolDefault(key string, defaultValue bool) bool {
 	}
 	return value
 }
-
-// ============================================================================
-// 请求头处理方法
-// ============================================================================
 
 // Request 获取原始请求
 func (c *Context) Request() *http.Request {
@@ -624,10 +600,6 @@ func (c *Context) GetTransferEncoding() string {
 	return c.GetHeader("Transfer-Encoding")
 }
 
-// ============================================================================
-// HTTP 方法判断方法
-// ============================================================================
-
 // IsMethod 判断请求方法
 func (c *Context) IsMethod(method string) bool {
 	return strings.ToUpper(c.request.Method) == strings.ToUpper(method)
@@ -698,10 +670,6 @@ func (c *Context) IsDeflate() bool {
 	return strings.Contains(strings.ToLower(acceptEncoding), "deflate")
 }
 
-// ============================================================================
-// 请求路径和URL处理方法
-// ============================================================================
-
 // Path 获取请求路径
 func (c *Context) Path() string {
 	return c.request.URL.Path
@@ -771,10 +739,6 @@ func (c *Context) UserAgent() string {
 	c.userAgent = c.request.UserAgent()
 	return c.userAgent
 }
-
-// ============================================================================
-// 表单和请求体处理方法
-// ============================================================================
 
 // PostForm 获取表单参数
 func (c *Context) PostForm(key string) string {
@@ -1004,12 +968,10 @@ func setField(field reflect.Value, value string) {
 		if floatValue, err := strconv.ParseFloat(value, 64); err == nil {
 			field.SetFloat(floatValue)
 		}
+	default:
+
 	}
 }
-
-// ============================================================================
-// Cookie 处理方法
-// ============================================================================
 
 // Cookie 获取Cookie值
 func (c *Context) Cookie(name string) (string, error) {
@@ -1088,10 +1050,6 @@ func (c *Context) GetCookieDefault(name, defaultValue string) string {
 	}
 	return cookieVal
 }
-
-// ============================================================================
-// 重定向和错误处理方法
-// ============================================================================
 
 // Redirect 重定向
 func (c *Context) Redirect(code int, location string) {
@@ -1182,10 +1140,6 @@ func (c *Context) FailWithError(code int, err error) {
 	c.Abort()
 }
 
-// ============================================================================
-// 请求生命周期管理方法
-// ============================================================================
-
 // Next 执行下一个中间件/处理器
 func (c *Context) Next() {
 	c.index++
@@ -1237,10 +1191,6 @@ func (c *Context) GetError() error {
 	}
 	return nil
 }
-
-// ============================================================================
-// 数据存储方法
-// ============================================================================
 
 // Get 获取存储的数据
 func (c *Context) Get(key interface{}) (value interface{}, exists bool) {
@@ -1305,10 +1255,6 @@ func (c *Context) GetBool(key interface{}) (b bool) {
 	return
 }
 
-// ============================================================================
-// 路径参数处理方法
-// ============================================================================
-
 // GetPathParam 获取路径参数
 func (c *Context) GetPathParam(key string) string {
 	return c.Params.ByName(key)
@@ -1349,10 +1295,6 @@ func (c *Context) GetPathParamDefault(key, defaultValue string) string {
 	return c.Params.ByNameDefault(key, defaultValue)
 }
 
-// ============================================================================
-// 通用头部和内容长度处理方法
-// ============================================================================
-
 // ContentLength 获取内容长度
 func (c *Context) ContentLength() int64 {
 	length, _ := strconv.ParseInt(c.GetHeader("Content-Length"), 10, 64)
@@ -1380,10 +1322,6 @@ func (c *Context) ContainsFileHeader(filename string) bool {
 	}
 	return fh != nil
 }
-
-// ============================================================================
-// 上下文接口实现
-// ============================================================================
 
 // Deadline 返回请求的截止时间
 func (c *Context) Deadline() (deadline time.Time, ok bool) {
@@ -1416,10 +1354,6 @@ func (c *Context) Value(key interface{}) interface{} {
 	}
 	return nil
 }
-
-// ============================================================================
-// 辅助和工具方法
-// ============================================================================
 
 // Copy 创建Context副本
 func (c *Context) Copy() *Context {
@@ -1527,10 +1461,6 @@ func (c *Context) GetFlash(key string) []string {
 	return []string{}
 }
 
-// ============================================================================
-// 工具函数
-// ============================================================================
-
 func (c *Context) ServeRange(ctx context.Context, reader RangeReader) {
 	// 1. 基础校验
 	if reader == nil {
@@ -1569,7 +1499,10 @@ func (c *Context) ServeRange(ctx context.Context, reader RangeReader) {
 			c.InternalServerError(fmt.Sprintf("read full data failed: %v", err))
 			return
 		}
-		io.Copy(c.writer, fullReader)
+		_, err = io.Copy(c.writer, fullReader)
+		if err != nil {
+			return
+		}
 		return
 	}
 
@@ -1587,10 +1520,12 @@ func (c *Context) ServeRange(ctx context.Context, reader RangeReader) {
 		c.InternalServerError(fmt.Sprintf("read range data failed: %v", err))
 		return
 	}
-	io.Copy(c.writer, rangeDataReader)
+	_, err = io.Copy(c.writer, rangeDataReader)
+	if err != nil {
+		return
+	}
 }
 
-// -------------------------- 通用Range解析工具（复用并优化） --------------------------
 // RangeSpec 表示解析后的Range范围
 type RangeSpec struct {
 	Start  int64 // 起始字节

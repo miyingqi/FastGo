@@ -2,9 +2,12 @@ package FastGo
 
 import (
 	"LogX"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -51,14 +54,28 @@ func (h *App) AddRouter(router *Router) {
 }
 
 func (h *App) RunTLS(addr, certFile, keyFile string) {
+	addr, port := parseAddress(addr, true)
+	if addr == "" || port == 0 {
+		defaultLogger.Error("Invalid address: %s", addr)
+		return
+	}
 	h.core.addHandler(midToHandler(h.middlewares)...)
 	h.core.addHandler(h.router.HandleHTTP)
 	h.core.SetCert(certFile, keyFile)
-	defaultLogger.Info("Server started at %s (TLS)", addr)
+	if addr == "0.0.0.0" {
+		se := getAllIPs()
+		defaultLogger.Info("Server started at all address (TLS)")
+		for _, addr := range se {
+			defaultLogger.Info("Running https://%s:%d", addr, port)
+		}
+	} else if addr == "localhost" {
+		defaultLogger.Info("Server started at %s", addr)
+		defaultLogger.Info("Running https://localhost:%d", port)
+	}
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		if err := h.core.listenHTTPS(addr, certFile, keyFile); err != nil && err != http.ErrServerClosed {
+		if err := h.core.listenHTTPS(addr+":"+strconv.Itoa(port), certFile, keyFile); err != nil && err != http.ErrServerClosed {
 			defaultLogger.Error("Server failed to start (TLS): %v", err)
 			return
 		}
@@ -68,15 +85,32 @@ func (h *App) RunTLS(addr, certFile, keyFile string) {
 }
 
 func (h *App) Run(addr string) {
+
+	addr, port := parseAddress(addr, false)
+	if addr == "" || port == 0 {
+		defaultLogger.Error("Invalid address: %s", addr)
+		return
+	}
 	h.core.addHandler(midToHandler(h.middlewares)...)
 	h.core.addHandler(h.router.HandleHTTP)
-	defaultLogger.Info("Server started at %s", addr)
+
+	if addr == "0.0.0.0" {
+		se := getAllIPs()
+		defaultLogger.Info("Server started at all address")
+		for _, addr := range se {
+			defaultLogger.Info("Running http://%s:%d", addr, port)
+		}
+	} else if addr == "localhost" {
+		defaultLogger.Info("Server started at %s", addr)
+		defaultLogger.Info("Running http://localhost:%d", port)
+	}
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := h.core.listenHTTP(addr); err != nil && err != http.ErrServerClosed {
-			defaultLogger.Error("Server failed to start: %v", err)
+		if err := h.core.listenHTTP(addr + ":" + strconv.Itoa(port)); err != nil && err != http.ErrServerClosed {
+			defaultLogger.Fatal("Server failed to start: %v", err)
+			h.core.Close()
 			return
 		}
 	}()
@@ -177,4 +211,111 @@ func midToHandler(middlewares []Middleware) []HandlerFunc {
 		handlers = append(handlers, middleware.HandleHTTP)
 	}
 	return handlers
+}
+
+func parseAddress(addr string, https bool) (host string, port int) {
+	// 1. 处理空地址，设置默认值
+	if addr == "" {
+		if https {
+			return "0.0.0.0", 443
+		}
+		return "0.0.0.0", 80
+	}
+
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		defaultLogger.Error("Invalid address: %v", err)
+		return "", 0
+	}
+
+	// 3. 校验并转换端口
+	port, err = strconv.Atoi(portStr)
+	if err != nil {
+		defaultLogger.Error("Invalid port: %v", err)
+		return "", 0
+	}
+	if port < 0 || port > 65535 {
+		defaultLogger.Error("port out of range (0-65535): %d", port)
+		return "", 0
+	}
+
+	// 4. 处理 Host 为空的情况（例如 ":8080"）
+	if host == "" {
+		host = "0.0.0.0"
+	}
+
+	return host, port
+}
+func getAllIPs() []string {
+	// 初始化结果切片，第一个元素固定为127.0.0.1
+	ipList := []string{"localhost"}
+	// 用于去重：key为IP地址，避免同一IP多次添加
+	ipSet := make(map[string]struct{})
+	ipSet["localhost"] = struct{}{}
+
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return ipList
+	}
+
+	for _, iface := range interfaces {
+
+		if iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+
+		if isVirtualInterface(iface.Name) {
+			continue
+		}
+
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			default:
+				continue
+			}
+			if ip == nil || ip.To4() == nil {
+				continue
+			}
+
+			ipStr := ip.String()
+			if _, exists := ipSet[ipStr]; !exists {
+				ipSet[ipStr] = struct{}{}
+				ipList = append(ipList, ipStr)
+			}
+		}
+	}
+
+	return ipList
+}
+
+// isVirtualInterface 判断是否为虚拟网卡（保留原逻辑，兼容Windows/Linux/Mac）
+func isVirtualInterface(name string) bool {
+	lowerName := strings.ToLower(name)
+	// 常见虚拟网卡关键字，覆盖Docker/VMware/桥接/隧道等场景
+	virtualKeywords := []string{
+		"virtual", "vmware", "vbox", "docker", "bridge",
+		"tunnel", "hyper-v", "veth", "utun", "tap",
+		"virbr", "docker0", "kube-", "cni-", "wsl",
+	}
+
+	for _, keyword := range virtualKeywords {
+		if strings.Contains(lowerName, keyword) {
+			return true
+		}
+	}
+	return false
 }
