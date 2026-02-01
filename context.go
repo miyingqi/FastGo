@@ -18,9 +18,17 @@ import (
 	"time"
 )
 
-// ============================================================================
-// 参数处理相关类型定义
-// ============================================================================
+type FJ map[string]interface{}
+type HandlerFunc func(*Context)
+
+func (h HandlerFunc) HandleHTTP(c *Context) {
+	h(c)
+}
+
+type HandlerChan []HandlerFunc
+type Middleware interface {
+	HandleHTTP(*Context)
+}
 
 // Param 是单个URL参数的表示
 type Param struct {
@@ -1094,7 +1102,7 @@ func (c *Context) Redirect(code int, location string) {
 }
 
 // HTTPNotFound 处理 404 错误
-func HTTPNotFound(c ContextInterface) {
+func HTTPNotFound(c *Context) {
 	c.SetStatus(http.StatusNotFound)
 	c.SetHeader("Content-Type", "text/plain; charset=utf-8")
 	_, err := c.Write([]byte("404 Not Found"))
@@ -1105,7 +1113,7 @@ func HTTPNotFound(c ContextInterface) {
 }
 
 // Status 设置响应状态码并返回Context以支持链式调用
-func (c *Context) Status(code int) ContextInterface {
+func (c *Context) Status(code int) *Context {
 	c.SetStatus(code)
 	return c
 }
@@ -1414,7 +1422,7 @@ func (c *Context) Value(key interface{}) interface{} {
 // ============================================================================
 
 // Copy 创建Context副本
-func (c *Context) Copy() ContextInterface {
+func (c *Context) Copy() *Context {
 	cp := &Context{
 		request:   c.request,
 		writer:    c.writer,

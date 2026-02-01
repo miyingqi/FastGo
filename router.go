@@ -1,6 +1,8 @@
 package FastGo
 
-import "strings"
+import (
+	"strings"
+)
 
 type nodeType uint8
 type HandleFuncChain []HandlerFunc
@@ -163,7 +165,7 @@ func (r *Router) addRoute(path, method string, handlers HandleFuncChain) {
 }
 
 // HandleHTTP  请求处理
-func (r *Router) HandleHTTP(c ContextInterface) {
+func (r *Router) HandleHTTP(c *Context) {
 	method := c.Method()
 	path := c.Path()
 

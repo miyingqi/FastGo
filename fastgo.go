@@ -15,12 +15,12 @@ var defaultLogger = LogX.NewDefaultSyncLogger("FastGo")
 type App struct {
 	core        *core
 	router      *Router
-	middlewares []HandlerStruct
+	middlewares []Middleware
 }
 
 func NewFastGo() *App {
 	router := NewRouter()
-	middlewares := make([]HandlerStruct, 0)
+	middlewares := make([]Middleware, 0)
 	middlewares = append(middlewares, NewMiddlewareLog())
 	app := &App{
 		core:        newCore(),
@@ -85,7 +85,7 @@ func (h *App) Run(addr string) {
 }
 
 // Use 添加中间件到应用
-func (h *App) Use(middlewares ...HandlerStruct) {
+func (h *App) Use(middlewares ...Middleware) {
 	h.middlewares = append(h.middlewares, middlewares...)
 }
 
@@ -171,7 +171,7 @@ func (s *core) Close() {
 	}
 }
 
-func midToHandler(middlewares []HandlerStruct) []HandlerFunc {
+func midToHandler(middlewares []Middleware) []HandlerFunc {
 	handlers := make([]HandlerFunc, 0)
 	for _, middleware := range middlewares {
 		handlers = append(handlers, middleware.HandleHTTP)

@@ -11,7 +11,7 @@ type MiddlewareLog struct {
 }
 
 // HandleHTTP 核心中间件逻辑：采集并打印HTTP请求日志
-func (m *MiddlewareLog) HandleHTTP(context ContextInterface) {
+func (m *MiddlewareLog) HandleHTTP(context *Context) {
 	startTime := time.Now()
 	context.Next()
 	elapsed := time.Since(startTime)

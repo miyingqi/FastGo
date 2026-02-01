@@ -2,7 +2,7 @@ package FastGo
 
 // SwaggerHandler 处理 Swagger UI 请求
 func SwaggerHandler() HandlerFunc {
-	return func(c ContextInterface) {
+	return func(c *Context) {
 		if c.Path() == "/swagger/doc.json" {
 			// 返回生成的 swagger.json
 			c.SetHeader("Content-Type", "application/json")
