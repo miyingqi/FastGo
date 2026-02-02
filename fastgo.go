@@ -68,8 +68,11 @@ func (h *App) RunTLS(addr, certFile, keyFile string) {
 		for _, addr := range se {
 			defaultLogger.Info("Running https://%s:%d", addr, port)
 		}
-	} else if addr == "localhost" {
+	} else if addr == "localhost" || addr == "127.0.0.1" {
 		defaultLogger.Info("Server started at %s", addr)
+		defaultLogger.Info("Running https://localhost:%d", port)
+	} else {
+		defaultLogger.Info("Server started at %s (TLS)", addr)
 		defaultLogger.Info("Running https://localhost:%d", port)
 	}
 	var wg sync.WaitGroup
@@ -100,9 +103,12 @@ func (h *App) Run(addr string) {
 		for _, addr := range se {
 			defaultLogger.Info("Running http://%s:%d", addr, port)
 		}
-	} else if addr == "localhost" {
+	} else if addr == "localhost" || addr == "127.0.0.1" {
 		defaultLogger.Info("Server started at %s", addr)
 		defaultLogger.Info("Running http://localhost:%d", port)
+	} else {
+		defaultLogger.Info("Server started at %s", addr)
+		defaultLogger.Info("Running http://%s:%d", addr, port)
 	}
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -128,6 +134,7 @@ func (h *App) gracefulShutdown() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	_ = <-sigCh
+	h.core.Close()
 	defaultLogger.Info("Server shutting down...")
 }
 

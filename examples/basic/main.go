@@ -2,9 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
-	"log"
-	"os"
 	"time"
 
 	"github.com/miyingqi/FastGo"
@@ -247,18 +244,6 @@ func main() {
 	// 创建带Swagger支持的应用
 	app := FastGo.NewFastGo()
 	// 加载 Swagger 文档
-	docData, err := os.Open("examples/basic/docs/swagger.json") // 确保这里是 swagger.json
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer docData.Close()
-	docBytes, _ := io.ReadAll(docData)
-	FastGo.Docs = string(docBytes)
-
-	app.Router().GET("/swagger", FastGo.SwaggerHandler())
-	app.Router().GET("/swagger/", FastGo.SwaggerHandler())
-	app.Router().GET("/swagger/index.html", FastGo.SwaggerHandler())
-	app.Router().GET("/swagger/doc.json", FastGo.SwaggerHandler())
 
 	// 创建独立的路由器
 	userRouter := FastGo.NewRouter()
@@ -340,7 +325,13 @@ func main() {
 		}
 	}
 	app.Use(Cors())
-	app.Run(":8888")
+	app.Use(Swagger())
+	app.Run("192.168.0.102:8888")
+}
+func Swagger() FastGo.Middleware {
+	swagger := FastGoMid.NewSwaggerMid()
+	swagger.LoadSwaggerDoc("examples/basic/docs/swagger.json")
+	return swagger
 }
 func Cors() FastGo.Middleware {
 	cors := FastGoMid.NewCors()
