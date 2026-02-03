@@ -21,13 +21,13 @@ import (
 type FJ map[string]interface{}
 type HandlerFunc func(*Context)
 
-func (h HandlerFunc) HandleHTTP(c *Context) {
+func (h HandlerFunc) Handle(c *Context) {
 	h(c)
 }
 
-type HandlerChan []HandlerFunc
-type Middleware interface {
-	HandleHTTP(*Context)
+type HandleChain []HandlerFunc
+type Engine interface {
+	Handle(*Context)
 }
 
 // Param 是单个URL参数的表示

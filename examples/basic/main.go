@@ -265,7 +265,7 @@ func main() {
 		// 为admin组添加中间件
 		adminGroup.Use(func(c *FastGo.Context) {
 			fmt.Println("Admin middleware executed")
-			c.SetHeader("X-Middleware", "admin")
+			c.SetHeader("X-Engine", "admin")
 			c.Next()
 		})
 
@@ -328,12 +328,12 @@ func main() {
 	app.Use(Swagger())
 	app.Run("192.168.0.102:8888")
 }
-func Swagger() FastGo.Middleware {
+func Swagger() FastGo.Engine {
 	swagger := FastGoMid.NewSwaggerMid()
 	swagger.LoadSwaggerDoc("examples/basic/docs/swagger.json")
 	return swagger
 }
-func Cors() FastGo.Middleware {
+func Cors() FastGo.Engine {
 	cors := FastGoMid.NewCors()
 	cors.SetAllowMethods("GET, POST, PUT, DELETE, OPTIONS").
 		SetAllowOrigins("*").

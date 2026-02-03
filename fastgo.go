@@ -18,12 +18,12 @@ var defaultLogger = LogX.NewDefaultSyncLogger("FastGo")
 type App struct {
 	core        *core
 	router      *Router
-	middlewares []Middleware
+	middlewares []Engine
 }
 
 func NewFastGo() *App {
 	router := NewRouter()
-	middlewares := make([]Middleware, 0)
+	middlewares := make([]Engine, 0)
 	middlewares = append(middlewares, NewMiddlewareLog())
 	app := &App{
 		core:        newCore(),
@@ -60,7 +60,7 @@ func (h *App) RunTLS(addr, certFile, keyFile string) {
 		return
 	}
 	h.core.addHandler(midToHandler(h.middlewares)...)
-	h.core.addHandler(h.router.HandleHTTP)
+	h.core.addHandler(h.router.Handle)
 	h.core.SetCert(certFile, keyFile)
 	if addr == "0.0.0.0" {
 		se := getAllIPs()
@@ -95,7 +95,7 @@ func (h *App) Run(addr string) {
 		return
 	}
 	h.core.addHandler(midToHandler(h.middlewares)...)
-	h.core.addHandler(h.router.HandleHTTP)
+	h.core.addHandler(h.router.Handle)
 
 	if addr == "0.0.0.0" {
 		se := getAllIPs()
@@ -125,7 +125,7 @@ func (h *App) Run(addr string) {
 }
 
 // Use 添加中间件到应用
-func (h *App) Use(middlewares ...Middleware) {
+func (h *App) Use(middlewares ...Engine) {
 	h.middlewares = append(h.middlewares, middlewares...)
 }
 
@@ -212,10 +212,10 @@ func (s *core) Close() {
 	}
 }
 
-func midToHandler(middlewares []Middleware) []HandlerFunc {
+func midToHandler(middlewares []Engine) []HandlerFunc {
 	handlers := make([]HandlerFunc, 0)
 	for _, middleware := range middlewares {
-		handlers = append(handlers, middleware.HandleHTTP)
+		handlers = append(handlers, middleware.Handle)
 	}
 	return handlers
 }

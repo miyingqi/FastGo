@@ -5,7 +5,6 @@ import (
 )
 
 type nodeType uint8
-type HandleFuncChain []HandlerFunc
 
 const (
 	static   nodeType = iota // 静态节点
@@ -21,7 +20,7 @@ type Router struct {
 // RouteGroup 表示路由组
 type RouteGroup struct {
 	prefix      string
-	handlers    HandleFuncChain
+	handlers    HandleChain
 	router      *Router
 	parentGroup *RouteGroup // 新增：父级分组，用于嵌套分组
 }
@@ -96,7 +95,7 @@ func (group *RouteGroup) HEAD(path string, handler HandlerFunc) {
 // addRoute 为路由组添加路由
 func (group *RouteGroup) addRoute(method, path string, handler HandlerFunc) {
 	fullPath := group.getFullPath(path)
-	handlers := make(HandleFuncChain, 0, len(group.getAllHandlers())+1)
+	handlers := make(HandleChain, 0, len(group.getAllHandlers())+1)
 	handlers = append(handlers, group.getAllHandlers()...)
 	handlers = append(handlers, handler)
 	group.router.addRoute(fullPath, method, handlers)
@@ -129,8 +128,8 @@ func (group *RouteGroup) getFullPath(path string) string {
 }
 
 // getAllHandlers 获取包括父级分组在内的所有处理器
-func (group *RouteGroup) getAllHandlers() HandleFuncChain {
-	var allHandlers HandleFuncChain
+func (group *RouteGroup) getAllHandlers() HandleChain {
+	var allHandlers HandleChain
 
 	// 从根分组开始，按顺序添加所有中间件
 	group.collectHandlersFromRoot((*[]HandlerFunc)(&allHandlers))
@@ -159,13 +158,13 @@ func (r *Router) getRoute(method string) *routeNode {
 }
 
 // addRoute 添加路由
-func (r *Router) addRoute(path, method string, handlers HandleFuncChain) {
+func (r *Router) addRoute(path, method string, handlers HandleChain) {
 	route := r.getRoute(method)
 	route.Insert(path, handlers)
 }
 
 // HandleHTTP  请求处理
-func (r *Router) HandleHTTP(c *Context) {
+func (r *Router) Handle(c *Context) {
 	method := c.Method()
 	path := c.Path()
 
@@ -193,37 +192,37 @@ func (r *Router) HandleHTTP(c *Context) {
 // Router 上的路由方法
 // GET 添加GET请求路由
 func (r *Router) GET(path string, handler HandlerFunc) {
-	r.addRoute(path, "GET", HandleFuncChain{handler})
+	r.addRoute(path, "GET", HandleChain{handler})
 }
 
 // POST 添加POST请求路由
 func (r *Router) POST(path string, handler HandlerFunc) {
-	r.addRoute(path, "POST", HandleFuncChain{handler})
+	r.addRoute(path, "POST", HandleChain{handler})
 }
 
 // PUT 添加PUT请求路由
 func (r *Router) PUT(path string, handler HandlerFunc) {
-	r.addRoute(path, "PUT", HandleFuncChain{handler})
+	r.addRoute(path, "PUT", HandleChain{handler})
 }
 
 // DELETE 添加DELETE请求路由
 func (r *Router) DELETE(path string, handler HandlerFunc) {
-	r.addRoute(path, "DELETE", HandleFuncChain{handler})
+	r.addRoute(path, "DELETE", HandleChain{handler})
 }
 
 // PATCH 添加PATCH请求路由
 func (r *Router) PATCH(path string, handler HandlerFunc) {
-	r.addRoute(path, "PATCH", HandleFuncChain{handler})
+	r.addRoute(path, "PATCH", HandleChain{handler})
 }
 
 // OPTIONS 添加OPTIONS请求路由
 func (r *Router) OPTIONS(path string, handler HandlerFunc) {
-	r.addRoute(path, "OPTIONS", HandleFuncChain{handler})
+	r.addRoute(path, "OPTIONS", HandleChain{handler})
 }
 
 // HEAD 添加HEAD请求路由
 func (r *Router) HEAD(path string, handler HandlerFunc) {
-	r.addRoute(path, "HEAD", HandleFuncChain{handler})
+	r.addRoute(path, "HEAD", HandleChain{handler})
 }
 
 // MergeRouter 合并另一个路由器的路由
@@ -284,18 +283,18 @@ func mergeRouteNodes(existing, other *routeNode) {
 
 // routeNode 路由节点
 type routeNode struct {
-	path      string          // 节点的路径（公共前缀）
-	indices   string          // 子节点首字符索引
-	children  []*routeNode    // 子节点
-	Handlers  HandleFuncChain // 处理器链
-	priority  uint32          // 节点优先级
-	nType     nodeType        // 节点类型
-	maxParams uint8           // 子树中最大参数数量
-	wildChild bool            // 是否有通配符子节点
+	path      string       // 节点的路径（公共前缀）
+	indices   string       // 子节点首字符索引
+	children  []*routeNode // 子节点
+	Handlers  HandleChain  // 处理器链
+	priority  uint32       // 节点优先级
+	nType     nodeType     // 节点类型
+	maxParams uint8        // 子树中最大参数数量
+	wildChild bool         // 是否有通配符子节点
 	paramName string
 }
 
-func (r *routeNode) Insert(path string, handlers HandleFuncChain) {
+func (r *routeNode) Insert(path string, handlers HandleChain) {
 	if r == nil || len(path) == 0 {
 		return
 	}
