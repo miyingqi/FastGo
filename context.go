@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-type FJ map[string]interface{}
+type JSON map[string]interface{}
 type HandlerFunc func(*Context)
 
 func (h HandlerFunc) Handle(c *Context) {
@@ -254,7 +254,7 @@ func (c *Context) SendString(code int, body string) {
 }
 
 // SendJson 发送 JSON 响应
-func (c *Context) SendJson(code int, jsonData FJ) {
+func (c *Context) SendJson(code int, jsonData JSON) {
 	c.SetStatus(code)
 	c.SetHeader("Content-Type", "application/json; charset=utf-8")
 
@@ -334,7 +334,7 @@ func (c *Context) File(filepath string) {
 
 // SendSuccess 发送成功响应
 func (c *Context) SendSuccess(data interface{}) {
-	c.SendJson(http.StatusOK, FJ{
+	c.SendJson(http.StatusOK, JSON{
 		"success": true,
 		"data":    data,
 		"code":    http.StatusOK,
@@ -343,7 +343,7 @@ func (c *Context) SendSuccess(data interface{}) {
 
 // SendError 发送错误响应
 func (c *Context) SendError(code int, message string, errData ...interface{}) {
-	response := FJ{
+	response := JSON{
 		"success": false,
 		"message": message,
 		"code":    code,
@@ -1120,7 +1120,7 @@ func (c *Context) InternalServerError(message string) {
 func (c *Context) Fail(code int, errorMsg string) {
 	c.SetStatus(code)
 	c.SetHeader("Content-Type", "application/json; charset=utf-8")
-	c.SendJson(code, FJ{
+	c.SendJson(code, JSON{
 		"error":   true,
 		"message": errorMsg,
 		"status":  code,
@@ -1132,7 +1132,7 @@ func (c *Context) Fail(code int, errorMsg string) {
 func (c *Context) FailWithError(code int, err error) {
 	c.SetStatus(code)
 	c.SetHeader("Content-Type", "application/json; charset=utf-8")
-	c.SendJson(code, FJ{
+	c.SendJson(code, JSON{
 		"error":   true,
 		"message": err.Error(),
 		"status":  code,

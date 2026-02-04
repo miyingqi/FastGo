@@ -121,7 +121,7 @@ func APIPing(c *FastGo.Context) {
 // @Success 200 {object} map[string]string "成功"
 // @Router /api/v1/status [get]
 func APIStatus(c *FastGo.Context) {
-	c.SendJson(200, FastGo.FJ{
+	c.SendJson(200, FastGo.JSON{
 		"status": "ok",
 		"server": "FastGo",
 	})
