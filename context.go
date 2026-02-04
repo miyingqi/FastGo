@@ -982,17 +982,43 @@ func (c *Context) Cookie(name string) (string, error) {
 	return cookie.Value, nil
 }
 
-// SetCookie 设置Cookie
-func (c *Context) SetCookie(name, value string, maxAge int, path, domain string, secure, httpOnly bool) {
+// 定义选项函数类型
+type CookieOption func(*http.Cookie)
+
+// 具体选项实现
+func WithSecure(secure bool) CookieOption {
+	return func(c *http.Cookie) {
+		c.Secure = secure
+	}
+}
+
+func WithHttpOnly(httpOnly bool) CookieOption {
+	return func(c *http.Cookie) {
+		c.HttpOnly = httpOnly
+	}
+}
+
+func WithDomain(domain string) CookieOption {
+	return func(c *http.Cookie) {
+		c.Domain = domain
+	}
+}
+
+// SetCookie 方法
+func (c *Context) SetCookie(name, value string, maxAge int, path string, options ...CookieOption) {
 	cookie := &http.Cookie{
 		Name:     name,
 		Value:    url.QueryEscape(value),
 		MaxAge:   maxAge,
 		Path:     path,
-		Domain:   domain,
-		Secure:   secure,
-		HttpOnly: httpOnly,
+		HttpOnly: true,
 	}
+
+	// 应用所有选项
+	for _, option := range options {
+		option(cookie)
+	}
+
 	http.SetCookie(c.writer, cookie)
 }
 
