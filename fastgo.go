@@ -2,6 +2,7 @@ package FastGo
 
 import (
 	"LogX"
+	"errors"
 	"net"
 	"net/http"
 	"os"
@@ -56,7 +57,7 @@ func (h *App) AddRouter(router *Router) {
 func (h *App) RunTLS(addr, certFile, keyFile string) {
 	addr, port := parseAddress(addr, true)
 	if addr == "" || port == 0 {
-		defaultLogger.Error("Invalid address: %s", addr)
+		_ = defaultLogger.Error("Invalid address: %s", addr)
 		return
 	}
 	h.core.addHandler(midToHandler(h.middlewares)...)
@@ -79,8 +80,8 @@ func (h *App) RunTLS(addr, certFile, keyFile string) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := h.core.listenHTTPS(addr+":"+strconv.Itoa(port), certFile, keyFile); err != nil && err != http.ErrServerClosed {
-			defaultLogger.Error("Server failed to start (TLS): %v", err)
+		if err := h.core.listenHTTPS(addr+":"+strconv.Itoa(port), certFile, keyFile); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			_ = defaultLogger.Error("Server failed to start (TLS): %v", err)
 			h.core.Close()
 			return
 		}
@@ -93,7 +94,7 @@ func (h *App) Run(addr string) {
 
 	addr, port := parseAddress(addr, false)
 	if addr == "" || port == 0 {
-		defaultLogger.Error("Invalid address: %s", addr)
+		_ = defaultLogger.Error("Invalid address: %s", addr)
 		return
 	}
 	h.core.addHandler(midToHandler(h.middlewares)...)
@@ -116,7 +117,7 @@ func (h *App) Run(addr string) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := h.core.listenHTTP(addr + ":" + strconv.Itoa(port)); err != nil && err != http.ErrServerClosed {
+		if err := h.core.listenHTTP(addr + ":" + strconv.Itoa(port)); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			defaultLogger.Fatal("Server failed to start: %v", err)
 			h.core.Close()
 			return
@@ -234,18 +235,18 @@ func parseAddress(addr string, https bool) (host string, port int) {
 
 	host, portStr, err := net.SplitHostPort(addr)
 	if err != nil {
-		defaultLogger.Error("Invalid address: %v", err)
+		_ = defaultLogger.Error("Invalid address: %v", err)
 		return "", 0
 	}
 
 	// 3. 校验并转换端口
 	port, err = strconv.Atoi(portStr)
 	if err != nil {
-		defaultLogger.Error("Invalid port: %v", err)
+		_ = defaultLogger.Error("Invalid port: %v", err)
 		return "", 0
 	}
 	if port < 0 || port > 65535 {
-		defaultLogger.Error("port out of range (0-65535): %d", port)
+		_ = defaultLogger.Error("port out of range (0-65535): %d", port)
 		return "", 0
 	}
 
