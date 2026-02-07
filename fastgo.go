@@ -78,8 +78,10 @@ func (h *App) RunTLS(addr, certFile, keyFile string) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if err := h.core.listenHTTPS(addr+":"+strconv.Itoa(port), certFile, keyFile); err != nil && err != http.ErrServerClosed {
 			defaultLogger.Error("Server failed to start (TLS): %v", err)
+			h.core.Close()
 			return
 		}
 	}()
@@ -133,9 +135,10 @@ func (h *App) Use(middlewares ...Engine) {
 func (h *App) gracefulShutdown() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	_ = <-sigCh
+	sign := <-sigCh
+	defaultLogger.Info("Receive %s Server shutting down...", sign)
 	h.core.Close()
-	defaultLogger.Info("Server shutting down...")
+	defaultLogger.Info("Server shutdown complete")
 }
 
 type core struct {

@@ -326,7 +326,7 @@ func main() {
 	}
 	app.Use(Cors())
 	app.Use(Swagger())
-	app.Run("192.168.0.102:8888")
+	app.RunTLS(":8889", "config/certificate.crt", "config/private.key")
 }
 func Swagger() FastGo.Engine {
 	swagger := FastGoMid.NewSwaggerMid()
@@ -334,7 +334,7 @@ func Swagger() FastGo.Engine {
 	return swagger
 }
 func Cors() FastGo.Engine {
-	cors := FastGoMid.NewCors()
+	cors := FastGo.NewCors()
 	cors.SetAllowMethods("GET, POST, PUT, DELETE, OPTIONS").
 		SetAllowOrigins("*").
 		SetAllowHeaders("Content-Type, Authorization")
