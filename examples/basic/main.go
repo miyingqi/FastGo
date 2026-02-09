@@ -276,6 +276,10 @@ func main() {
 	// 添加其他路由
 	apiGroup := app.Group("/api/v1")
 	{
+		apiGroup.Use(func(context *FastGo.Context) {
+			context.Abort()
+			return
+		})
 		apiGroup.GET("/ping", APIPing)
 		apiGroup.GET("/status", APIStatus)
 	}

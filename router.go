@@ -163,8 +163,9 @@ func (r *Router) addRoute(path, method string, handlers HandleChain) {
 	route.Insert(path, handlers)
 }
 
-// HandleHTTP  请求处理
+// Handle  请求处理
 func (r *Router) Handle(c *Context) {
+
 	method := c.Method()
 	path := c.Path()
 
@@ -185,11 +186,13 @@ func (r *Router) Handle(c *Context) {
 	}
 
 	for _, handler := range matchedNode.Handlers {
+		if c.aborted {
+			return
+		}
 		handler(c)
 	}
 }
 
-// Router 上的路由方法
 // GET 添加GET请求路由
 func (r *Router) GET(path string, handler HandlerFunc) {
 	r.addRoute(path, "GET", HandleChain{handler})
