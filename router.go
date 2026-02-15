@@ -58,28 +58,28 @@ func (group *RouteGroup) Use(middleware ...HandlerFunc) {
 }
 
 // GET 添加GET请求路由
-func (group *RouteGroup) GET(path string, handler HandlerFunc) {
-	group.addRoute("GET", path, handler)
+func (group *RouteGroup) GET(path string, handler ...HandlerFunc) {
+	group.addRoute("GET", path, handler...)
 }
 
 // POST 添加POST请求路由
-func (group *RouteGroup) POST(path string, handler HandlerFunc) {
-	group.addRoute("POST", path, handler)
+func (group *RouteGroup) POST(path string, handler ...HandlerFunc) {
+	group.addRoute("POST", path, handler...)
 }
 
 // PUT 添加PUT请求路由
-func (group *RouteGroup) PUT(path string, handler HandlerFunc) {
-	group.addRoute("PUT", path, handler)
+func (group *RouteGroup) PUT(path string, handler ...HandlerFunc) {
+	group.addRoute("PUT", path, handler...)
 }
 
 // DELETE 添加DELETE请求路由
-func (group *RouteGroup) DELETE(path string, handler HandlerFunc) {
-	group.addRoute("DELETE", path, handler)
+func (group *RouteGroup) DELETE(path string, handler ...HandlerFunc) {
+	group.addRoute("DELETE", path, handler...)
 }
 
 // PATCH 添加PATCH请求路由
-func (group *RouteGroup) PATCH(path string, handler HandlerFunc) {
-	group.addRoute("PATCH", path, handler)
+func (group *RouteGroup) PATCH(path string, handler ...HandlerFunc) {
+	group.addRoute("PATCH", path, handler...)
 }
 
 // OPTIONS 添加OPTIONS请求路由
@@ -93,11 +93,11 @@ func (group *RouteGroup) HEAD(path string, handler HandlerFunc) {
 }
 
 // addRoute 为路由组添加路由
-func (group *RouteGroup) addRoute(method, path string, handler HandlerFunc) {
+func (group *RouteGroup) addRoute(method, path string, handler ...HandlerFunc) {
 	fullPath := group.getFullPath(path)
 	handlers := make(HandleChain, 0, len(group.getAllHandlers())+1)
 	handlers = append(handlers, group.getAllHandlers()...)
-	handlers = append(handlers, handler)
+	handlers = append(handlers, handler...)
 	group.router.addRoute(fullPath, method, handlers)
 }
 
